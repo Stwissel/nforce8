@@ -1,0 +1,29 @@
+{
+    "env": {
+        "es6": true,
+        "node": true
+    },
+    "extends": "eslint:recommended",
+    "parserOptions": {
+        "sourceType": "module"
+    },
+    "rules": {
+        "no-multi-spaces": ["error",
+            {
+                "exceptions": {
+                    "VariableDeclarator": true,
+                    "ImportDeclaration": true
+                }
+            }
+        ],
+        "valid-jsdoc": "error",
+        "vars-on-top": "error",
+        "wrap-iife": "error",
+        "wrap-regex": "error",
+        "yield-star-spacing": "error",
+        "yoda": [
+            "error",
+            "never"
+        ]
+    }
+}
