@@ -1,6 +1,18 @@
 language: node_js
 node_js:
   - "8"
+cache:
+  directories:
+    - "node_modules"
+git:
+  depth: 3
 branches:
   only:
-    - master
+  - master
+  - develop    
+deploy:
+  provider: npm
+  email: stw@linux.com
+  api_key: $NPM_TOKEN
+  on:
+    branch: master
