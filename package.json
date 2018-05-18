@@ -30,8 +30,8 @@
     "cookie-parser": "1.4.3",
     "express": "4.16.3",
     "express-session": "1.15.6",
-    "gulp": "^3.9.1",
     "gulp-jshint": "^2.1.0",
+    "gulp4": "^4.0.2",
     "jshint": "^2.9.5",
     "jshint-stylish": "^2.2.1",
     "mocha": "^5.1.1",
@@ -41,7 +41,7 @@
   },
   "optionalDependencies": {},
   "engines": {
-    "node": "*"
+    "node": ">8.0"
   },
   "bugs": {
     "url": "http://github.com/stwissel/nforce8/issues"
@@ -51,8 +51,5 @@
     "test": "./node_modules/mocha/bin/mocha ./test --reporter spec",
     "postversion": "git push && git push --tags"
   },
-  "license": {
-    "type": "MIT",
-    "url": "http://opensource.org/licenses/MIT"
-  }
+  "license": {"MIT"}
 }
