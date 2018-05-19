@@ -1,55 +1,51 @@
 {
-  "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
-  "name": "nforce8",
-  "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "1.10.0-fork",
-  "keywords": [
-    "salesforce",
-    "salesforce.com",
-    "force.com",
-    "database.com",
-    "sfdc",
-    "forcedotcom",
-    "rest",
-    "api"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git://github.com/stwissel/nforce8.git"
-  },
-  "main": "index.js",
-  "dependencies": {
-    "bluebird": "^3.5.1",
-    "faye": "1.2.4",
-    "lodash": "^4.17.5",
-    "mime": "2.0.3",
-    "request": "2.86.0"
-  },
-  "devDependencies": {
-    "body-parser": "1.18.2",
-    "cookie-parser": "1.4.3",
-    "express": "4.16.3",
-    "express-session": "1.15.6",
-    "gulp-jshint": "^2.1.0",
-    "gulp4": "^4.0.3",
-    "jshint": "^2.9.5",
-    "jshint-stylish": "^2.2.1",
-    "mocha": "^5.1.1",
-    "pug": "^2.0.3",
-    "run-sequence": "^2.2.0",
-    "should": "13.2.1"
-  },
-  "optionalDependencies": {},
-  "engines": {
-    "node": ">8.0"
-  },
-  "bugs": {
-    "url": "http://github.com/stwissel/nforce8/issues"
-  },
-  "scripts": {
-    "preversion": "npm test",
-    "test": "./node_modules/mocha/bin/mocha ./test --reporter spec",
-    "postversion": "git push && git push --tags"
-  },
-  "license": "MIT"
+    "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
+    "name": "nforce8",
+    "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
+    "version": "2.0.1-alpha",
+    "keywords": [
+        "salesforce",
+        "salesforce.com",
+        "force.com",
+        "database.com",
+        "sfdc",
+        "forcedotcom",
+        "rest",
+        "api"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/stwissel/nforce8.git"
+    },
+    "main": "index.js",
+    "dependencies": {
+        "bluebird": "^3.5.1",
+        "faye": "1.2.4",
+        "lodash": "^4.17.5",
+        "mime": "2.0.3",
+        "request": "2.86.0"
+    },
+    "devDependencies": {
+        "body-parser": "1.18.2",
+        "cookie-parser": "1.4.3",
+        "express": "4.16.3",
+        "express-session": "1.15.6",
+        "mocha": "^5.1.1",
+        "pug": "^2.0.3",
+        "run-sequence": "^2.2.0",
+        "should": "13.2.1"
+    },
+    "optionalDependencies": {},
+    "engines": {
+        "node": ">8.0"
+    },
+    "bugs": {
+        "url": "http://github.com/stwissel/nforce8/issues"
+    },
+    "scripts": {
+        "preversion": "npm test",
+        "test": "./node_modules/mocha/bin/mocha ./test --reporter spec",
+        "postversion": "git push && git push --tags"
+    },
+    "license": "MIT"
 }
