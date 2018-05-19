@@ -19,5 +19,5 @@ examples/json
 examples/leadOut.json
 
 .DS_Store
-
+.vscode
 env.sh
