@@ -1,16 +1,13 @@
-var request = require('request');
-var promises = require('./lib/promises');
-var qs = require('querystring');
-var url = require('url');
-var Record = require('./lib/record');
-var FDCStream = require('./lib/fdcstream');
+import { request } from 'request';
+import { querystring as qs } from 'querystring';
+import { zlib } from 'zlib';
+import { _ } from 'lodash';
+import { Record } from './lib/record';
+import { FDCStream } from './lib/fdcstream';
 import { util } from './lib/util';
-var errors = require('./lib/errors');
-var multipart = require('./lib/multipart');
-var faye = require('faye');
-var mime = require('mime');
-var zlib = require('zlib');
-var _ = require('lodash');
+import { errors } from './lib/errors';
+import { multipart } from './lib/multipart';
+import { promises } from './lib/promises';
 
 /*****************************
  * constants
@@ -425,7 +422,7 @@ Connection.prototype.getResources = function (data, callback) {
 };
 
 Connection.prototype.getSObjects = function (data, callback) {
-  var self = this;
+  //TODO: fix me! var self = this;
   var opts = this._getOpts(data, callback);
   opts.resource = '/sobjects';
   opts.method = 'GET';
@@ -568,7 +565,7 @@ Connection.prototype.getBody = function (data, callback) {
 
 Connection.prototype.getAttachmentBody = function (data, callback) {
   var opts = this._getOpts(data, callback);
-  var id = (opts.sobject) ? sobject.getId() : opts.id;
+  var id = (opts.sobject) ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/attachment/' + id + '/body';
   opts.method = 'GET';
   opts.blob = true;
@@ -577,7 +574,7 @@ Connection.prototype.getAttachmentBody = function (data, callback) {
 
 Connection.prototype.getDocumentBody = function (data, callback) {
   var opts = this._getOpts(data, callback);
-  var id = (opts.sobject) ? sobject.getId() : opts.id;
+  var id = (opts.sobject) ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/document/' + id + '/body';
   opts.method = 'GET';
   opts.blob = true;
@@ -586,7 +583,7 @@ Connection.prototype.getDocumentBody = function (data, callback) {
 
 Connection.prototype.getContentVersionBody = function (data, callback) {
   var opts = this._getOpts(data, callback);
-  var id = (opts.sobject) ? sobject.getId() : opts.id;
+  var id = (opts.sobject) ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/contentversion/' + id + '/body';
   opts.method = 'GET';
   opts.blob = true;
@@ -595,7 +592,7 @@ Connection.prototype.getContentVersionBody = function (data, callback) {
 
 Connection.prototype.getContentVersionData = function (data, callback) {
   var opts = this._getOpts(data, callback);
-  var id = (opts.sobject) ? sobject.getId() : opts.id;
+  var id = (opts.sobject) ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/contentversion/' + id + '/versiondata';
   opts.method = 'GET';
   opts.blob = true;
@@ -1079,7 +1076,7 @@ Connection.prototype._apiRequest = function (opts, callback) {
         !opts._retryCount) {
 
         // attempt the autorefresh
-        Connection.prototype.autoRefreshToken.call(self, opts, function (err2, res2) {
+        Connection.prototype.autoRefreshToken.call(self, opts, function (err2 /*, res2*/) {
           if (err2) {
             return resolver.reject(err2);
           } else {
@@ -1137,9 +1134,7 @@ Plugin.prototype.fn = function (fnName, fn) {
  * exports
  *****************************/
 
-module.exports.util = util;
-
-module.exports.plugin = function (opts) {
+const plugin = function (opts) {
   if (typeof opts === 'string') {
     opts = { namespace: opts };
   }
@@ -1157,11 +1152,11 @@ module.exports.plugin = function (opts) {
 };
 
 // connection creation
-module.exports.createConnection = function (opts) {
+const createConnection = function (opts) {
   return new Connection(opts);
 };
 
-module.exports.createSObject = function (type, fields) {
+const createSObject = function (type, fields) {
   var data = fields || {};
   data.attributes = {
     type: type
@@ -1170,5 +1165,7 @@ module.exports.createSObject = function (type, fields) {
   return rec;
 };
 
-module.exports.Record = Record;
-module.exports.version = require('./package.json').version;
+// Reading JSON doesn't work with import
+const version = require('./package.json').version;
+
+export { util, plugin, Record, version, createConnection, createSObject };
