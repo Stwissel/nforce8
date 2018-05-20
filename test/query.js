@@ -1,4 +1,4 @@
-var nforce = require('../');
+var nforce = require('../index');
 var should = require('should');
 var api = require('./mock/sfdc-rest-api');
 var port = process.env.PORT || 3000;
@@ -29,6 +29,7 @@ describe('query', function () {
 
     it('should work in multi-user mode', function (done) {
       orgMulti.query({ query: testQuery, oauth: oauth }, function (err, res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         done();
       });
@@ -36,6 +37,7 @@ describe('query', function () {
 
     it('should work in multi-user mode with promises', function (done) {
       orgMulti.query({ query: testQuery, oauth: oauth }).then(function (res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         api.getLastRequest().headers.should.have.property('authorization', 'Bearer ' + oauth.access_token);
         done();
@@ -47,6 +49,7 @@ describe('query', function () {
 
     it('should work in single-user mode', function (done) {
       orgSingle.query({ query: testQuery }, function (err, res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         done();
       });
@@ -54,6 +57,7 @@ describe('query', function () {
 
     it('should work in single-user mode with promises', function (done) {
       orgSingle.query({ query: testQuery }).then(function (res) {
+        should.exist(res);
         const lr = api.getLastRequest();
         lr.url.should.equal(expected);
         done();
@@ -65,6 +69,7 @@ describe('query', function () {
 
     it('should allow a string query in single-user mode', function (done) {
       orgSingle.query(testQuery, function (err, res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         done();
       });
@@ -78,6 +83,7 @@ describe('query', function () {
 
     it('should work in multi-user mode', function (done) {
       orgMulti.queryAll({ query: testQuery, oauth: oauth }, function (err, res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         verifyAccessToken();
         done();
@@ -86,6 +92,7 @@ describe('query', function () {
 
     it('should work in multi-user mode with promises', function (done) {
       orgMulti.queryAll({ query: testQuery, oauth: oauth }).then(function (res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         verifyAccessToken();
         done();
@@ -97,6 +104,7 @@ describe('query', function () {
 
     it('should work in single-user mode', function (done) {
       orgSingle.queryAll({ query: testQuery }, function (err, res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         verifyAccessToken();
         done();
@@ -105,6 +113,7 @@ describe('query', function () {
 
     it('should work in single-user mode with promises', function (done) {
       orgSingle.queryAll({ query: testQuery }).then(function (res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         verifyAccessToken();
         done();
@@ -116,6 +125,7 @@ describe('query', function () {
 
     it('should allow a string query in single-user mode', function (done) {
       orgSingle.queryAll(testQuery, function (err, res) {
+        should.exist(res);
         api.getLastRequest().url.should.equal(expected);
         verifyAccessToken();
         done();
