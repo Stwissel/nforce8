@@ -1,13 +1,13 @@
-import { request } from 'request';
-import { querystring as qs } from 'querystring';
-import { zlib } from 'zlib';
-import { _ } from 'lodash';
-import { Record } from './lib/record';
-import { FDCStream } from './lib/fdcstream';
-import { util } from './lib/util';
-import { errors } from './lib/errors';
-import { multipart } from './lib/multipart';
-import { promises } from './lib/promises';
+const request = require('request');
+const qs = require('querystring');
+const zlib = require('zlib');
+const _ = require('lodash');
+const Record = require('./lib/record');
+const FDCStream = require('./lib/fdcstream');
+const util = require('./lib/util');
+const errors = require('./lib/errors');
+const multipart = require('./lib/multipart');
+const promises = require('./lib/promises');
 
 /*****************************
  * constants
