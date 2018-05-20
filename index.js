@@ -1168,4 +1168,11 @@ const createSObject = function (type, fields) {
 // Reading JSON doesn't work with import
 const version = require('./package.json').version;
 
-export { util, plugin, Record, version, createConnection, createSObject };
+module.exports = {
+  util: util,
+  plugin: plugin,
+  Record: Record,
+  version: version,
+  createConnection: createConnection,
+  createSObject: createSObject
+};
