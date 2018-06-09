@@ -1,5 +1,8 @@
-var http = require("http");
-var port = process.env.PORT || 3000;
+const http = require("http");
+let port = process.env.PORT || 3000;
+const CONST = require("../../lib/constants");
+const apiVersion = CONST.API;
+
 var lastRequest = null;
 var nextResponse = null;
 var closeOnRequest = false;
@@ -79,7 +82,7 @@ const getClient = function(opts) {
     clientSecret: "adsfkdsalfajdskfa",
     redirectUri: "http://localhost:" + port + "/oauth/_callback",
     loginUri: "http://localhost:" + port + "/login/uri",
-    apiVersion: opts.apiVersion || "v43.0",
+    apiVersion: opts.apiVersion || apiVersion,
     mode: opts.mode || "multi",
     autoRefresh: opts.autoRefresh || false,
     onRefresh: opts.onRefresh || undefined

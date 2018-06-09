@@ -1,10 +1,10 @@
-var nforce = require("../");
-var should = require("should");
-var api = require("./mock/sfdc-rest-api");
-var port = process.env.PORT || 3000;
+const nforce = require("../");
+const should = require("should");
+const CONST = require("../lib/constants");
+const apiVersion = CONST.API;
 
-// var server;
-// var lastRequest;
+const api = require("./mock/sfdc-rest-api");
+const port = process.env.PORT || 3000;
 
 var org = nforce.createConnection(api.getClient());
 
@@ -34,7 +34,9 @@ describe("api-mock-crud", function() {
           should.exist(body.test_field__c);
           api
             .getLastRequest()
-            .url.should.equal("/services/data/v43.0/sobjects/account");
+            .url.should.equal(
+              "/services/data/" + apiVersion + "/sobjects/account"
+            );
           api.getLastRequest().method.should.equal("POST");
           var hKey = Object.keys(hs)[0];
           should.exist(api.getLastRequest().headers[hKey]);
@@ -42,7 +44,8 @@ describe("api-mock-crud", function() {
           done();
         })
         .catch(err => {
-          throw err;
+          should.not.exist(err);
+          done();
         });
     });
   });
@@ -60,12 +63,15 @@ describe("api-mock-crud", function() {
           should.exist(res);
           api
             .getLastRequest()
-            .url.should.equal("/services/data/v43.0/sobjects/account/someid");
+            .url.should.equal(
+              "/services/data/" + apiVersion + "/sobjects/account/someid"
+            );
           api.getLastRequest().method.should.equal("PATCH");
           done();
         })
         .catch(err => {
-          throw err;
+          should.not.exist(err);
+          done();
         });
     });
   });
@@ -87,13 +93,16 @@ describe("api-mock-crud", function() {
           api
             .getLastRequest()
             .url.should.equal(
-              "/services/data/v43.0/sobjects/account/my_ext_id__c/abc123"
+              "/services/data/" +
+                apiVersion +
+                "/sobjects/account/my_ext_id__c/abc123"
             );
           api.getLastRequest().method.should.equal("PATCH");
           done();
         })
         .catch(err => {
-          throw err;
+          should.not.exist(err);
+          done();
         });
     });
   });
@@ -111,12 +120,15 @@ describe("api-mock-crud", function() {
           should.exist(res);
           api
             .getLastRequest()
-            .url.should.equal("/services/data/v43.0/sobjects/account/someid");
+            .url.should.equal(
+              "/services/data/" + apiVersion + "/sobjects/account/someid"
+            );
           api.getLastRequest().method.should.equal("DELETE");
           done();
         })
         .catch(err => {
-          throw err;
+          should.not.exist(err);
+          done();
         });
     });
   });
@@ -132,7 +144,8 @@ describe("api-mock-crud", function() {
           done();
         })
         .catch(err => {
-          throw err;
+          should.not.exist(err);
+          done();
         });
     });
   });

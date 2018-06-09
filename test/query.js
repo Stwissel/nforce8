@@ -1,147 +1,143 @@
-var nforce = require('../index');
-var should = require('should');
-var api = require('./mock/sfdc-rest-api');
-var port = process.env.PORT || 3000;
+const nforce = require("../index");
+const should = require("should");
+const api = require("./mock/sfdc-rest-api");
+const port = process.env.PORT || 3000;
 
-var orgMulti = nforce.createConnection(api.getClient());
-var orgSingle = nforce.createConnection(api.getClient({ mode: 'single' }));
+const CONST = require("../lib/constants");
+const apiVersion = CONST.API;
 
-var testQuery = 'SELECT Id FROM Account LIMIT 1';
-var oauth = api.getOAuth();
+const orgMulti = nforce.createConnection(api.getClient());
+const orgSingle = nforce.createConnection(api.getClient({ mode: "single" }));
+
+const testQuery = "SELECT Id FROM Account LIMIT 1";
+const oauth = api.getOAuth();
 
 orgSingle.setOAuth(oauth);
 
 function verifyAccessToken() {
-  api.getLastRequest().headers
-    .should.have.property('authorization', 'Bearer ' + oauth.access_token);
+  api
+    .getLastRequest()
+    .headers.should.have.property(
+      "authorization",
+      "Bearer " + oauth.access_token
+    );
 }
 
-describe('query', function () {
-
+describe("query", function() {
   // set up mock server
-  before(function (done) {
+  before(done => {
     api.start(port, done);
   });
 
-  describe('#query', function () {
+  describe("#query", function() {
+    var expected =
+      "/services/data/" +
+      apiVersion +
+      "/query?q=SELECT%20Id%20FROM%20Account%20LIMIT%201";
 
-    var expected = '/services/data/v43.0/query?q=SELECT%20Id%20FROM%20Account%20LIMIT%201';
-
-    it('should work in multi-user mode', function (done) {
-      orgMulti.query({ query: testQuery, oauth: oauth }, function (err, res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        done();
-      });
+    it("should work in multi-user mode with promises", done => {
+      orgMulti
+        .query({ query: testQuery, oauth: oauth })
+        .then(res => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal(expected);
+          api
+            .getLastRequest()
+            .headers.should.have.property(
+              "authorization",
+              "Bearer " + oauth.access_token
+            );
+        })
+        .catch(err => {
+          should.not.exist(err);
+        })
+        .then(done, done);
     });
 
-    it('should work in multi-user mode with promises', function (done) {
-      orgMulti.query({ query: testQuery, oauth: oauth }).then(function (res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        api.getLastRequest().headers.should.have.property('authorization', 'Bearer ' + oauth.access_token);
-        done();
-      }, function (err) {
-        should.not.exist(err);
-        done();
-      });
+    it("should work in single-user mode with promises", done => {
+      orgSingle
+        .query({ query: testQuery })
+        .then(res => {
+          should.exist(res);
+          const lr = api.getLastRequest();
+          lr.url.should.equal(expected);
+        })
+        .catch(err => {
+          should.not.exist(err);
+        })
+        .then(done, done);
     });
 
-    it('should work in single-user mode', function (done) {
-      orgSingle.query({ query: testQuery }, function (err, res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        done();
-      });
+    it("should allow a string query in single-user mode", done => {
+      orgSingle
+        .query(testQuery)
+        .then(res => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal(expected);
+        })
+        .catch(err => {
+          should.not.exist(err);
+        })
+        .then(done, done);
     });
-
-    it('should work in single-user mode with promises', function (done) {
-      orgSingle.query({ query: testQuery }).then(function (res) {
-        should.exist(res);
-        const lr = api.getLastRequest();
-        lr.url.should.equal(expected);
-        done();
-      }, function (err) {
-        should.not.exist(err);
-        done();
-      });
-    });
-
-    it('should allow a string query in single-user mode', function (done) {
-      orgSingle.query(testQuery, function (err, res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        done();
-      });
-    });
-
   });
 
-  describe('#queryAll', function () {
+  describe("#queryAll", function() {
+    var expected =
+      "/services/data/" +
+      apiVersion +
+      "/queryAll?q=SELECT%20Id%20FROM%20Account%20LIMIT%201";
 
-    var expected = '/services/data/v43.0/queryAll?q=SELECT%20Id%20FROM%20Account%20LIMIT%201';
-
-    it('should work in multi-user mode', function (done) {
-      orgMulti.queryAll({ query: testQuery, oauth: oauth }, function (err, res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        verifyAccessToken();
-        done();
-      });
+    it("should work in multi-user mode with promises", done => {
+      orgMulti
+        .queryAll({ query: testQuery, oauth: oauth })
+        .then(res => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal(expected);
+          verifyAccessToken();
+        })
+        .catch(err => {
+          should.not.exist(err);
+        })
+        .then(done, done);
     });
 
-    it('should work in multi-user mode with promises', function (done) {
-      orgMulti.queryAll({ query: testQuery, oauth: oauth }).then(function (res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        verifyAccessToken();
-        done();
-      }, function (err) {
-        should.not.exist(err);
-        done();
-      });
+    it("should work in single-user mode with promises", done => {
+      orgSingle
+        .queryAll({ query: testQuery })
+        .then(res => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal(expected);
+          verifyAccessToken();
+        })
+        .catch(err => {
+          should.not.exist(err);
+        })
+        .then(done, done);
     });
 
-    it('should work in single-user mode', function (done) {
-      orgSingle.queryAll({ query: testQuery }, function (err, res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        verifyAccessToken();
-        done();
-      });
+    it("should allow a string query in single-user mode", done => {
+      orgSingle
+        .queryAll(testQuery)
+        .then(res => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal(expected);
+          verifyAccessToken();
+        })
+        .catch(err => {
+          should.not.exist(err);
+        })
+        .then(done, done);
     });
-
-    it('should work in single-user mode with promises', function (done) {
-      orgSingle.queryAll({ query: testQuery }).then(function (res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        verifyAccessToken();
-        done();
-      }, function (err) {
-        should.not.exist(err);
-        done();
-      });
-    });
-
-    it('should allow a string query in single-user mode', function (done) {
-      orgSingle.queryAll(testQuery, function (err, res) {
-        should.exist(res);
-        api.getLastRequest().url.should.equal(expected);
-        verifyAccessToken();
-        done();
-      });
-    });
-
   });
 
   // reset the lastRequest
-  afterEach(function () {
+  afterEach(() => {
     api.reset();
   });
 
   // close mock server
-  after(function (done) {
+  after(done => {
     api.stop(done);
   });
-
 });
