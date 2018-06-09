@@ -50,7 +50,7 @@ describe("index", function() {
           redirectUri: "http://localhost:3000/oauth/_callback",
           apiVersion: "24"
         });
-      }.should.not.throw());
+      }.should.throw());
     });
 
     it("should not throw for apiVersion v45.0", function() {

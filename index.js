@@ -8,7 +8,6 @@ const FDCStream = require("./lib/fdcstream");
 const util = require("./lib/util");
 const errors = require("./lib/errors");
 const multipart = require("./lib/multipart");
-const promises = require("./lib/promises");
 const optionHelper = require("./lib/optionhelper")();
 const CONST = require("./lib/constants");
 
@@ -22,6 +21,7 @@ const plugins = {};
  * connection object
  *****************************/
 
+// TODO turn into facturoy function with
 const Connection = function(opts) {
   var self = this;
 
@@ -233,13 +233,13 @@ Connection.prototype.getAuthUri = function(opts) {
   return endpoint + "?" + qs.stringify(urlOpts);
 };
 
-Connection.prototype.authenticate = function(data, callback) {
-  var self = this;
-  var opts = _.defaults(this._getOpts(data, callback), {
+Connection.prototype.authenticate = function(data) {
+  const self = this;
+  const result = new Promise();
+  const opts = _.defaults(this._getOpts(data), {
     executeOnRefresh: false,
     oauth: {}
   });
-  var resolver = promises.createResolver(opts.callback);
 
   opts.uri = self.environment == "sandbox" ? this.testLoginUri : this.loginUri;
   opts.method = "POST";
@@ -252,6 +252,7 @@ Connection.prototype.authenticate = function(data, callback) {
     client_secret: self.clientSecret
   };
 
+  //TODO: Add JWT authentication
   if (opts.code) {
     bopts.grant_type = "authorization_code";
     bopts.code = opts.code;
@@ -276,39 +277,44 @@ Connection.prototype.authenticate = function(data, callback) {
 
   opts.body = qs.stringify(bopts);
 
-  this._apiAuthRequest(opts, function(err, res) {
-    if (err) return resolver.reject(err);
-    var old = _.clone(opts.oauth);
-    _.assign(opts.oauth, res);
-    if (opts.assertion) opts.oauth.assertion = opts.assertion;
-    if (self.onRefresh && opts.executeOnRefresh === true) {
-      self.onRefresh.call(self, opts.oauth, old, function(err3) {
-        if (err3) return resolver.reject(err3);
-        else return resolver.resolve(opts.oauth);
-      });
-    } else {
-      resolver.resolve(opts.oauth);
-    }
-  });
+  this._apiAuthRequest(opts)
+    .then(res => {
+      var old = _.clone(opts.oauth);
+      _.assign(opts.oauth, res);
+      if (opts.assertion) {
+        opts.oauth.assertion = opts.assertion;
+      }
+      if (self.onRefresh && opts.executeOnRefresh === true) {
+        self.onRefresh.call(self, opts.oauth, old, function(err3) {
+          if (err3) {
+            return result.reject(err3);
+          } else {
+            return result.resolve(opts.oauth);
+          }
+        });
+      } else {
+        result.resolve(opts.oauth);
+      }
+    })
+    .catch(err => result.reject(err));
 
-  return resolver.promise;
+  return result;
 };
 
-Connection.prototype.refreshToken = function(data, callback) {
-  var self = this;
+Connection.prototype.refreshToken = function(data) {
+  const self = this;
+  const result = new Promise();
 
-  var opts = this._getOpts(data, callback, {
+  const opts = this._getOpts(data, null, {
     defaults: {
       executeOnRefresh: true
     }
   });
 
-  var resolver = promises.createResolver(opts.callback);
-
   opts.uri = this.environment == "sandbox" ? this.testLoginUri : this.loginUri;
   opts.method = "POST";
 
-  var refreshOpts = {
+  const refreshOpts = {
     client_id: this.clientId,
     redirect_uri: this.redirectUri
   };
@@ -334,26 +340,30 @@ Connection.prototype.refreshToken = function(data, callback) {
     "Content-Type": "application/x-www-form-urlencoded"
   };
 
-  this._apiAuthRequest(opts, function(err, res) {
-    if (err) return resolver.reject(err);
-    var old = _.clone(opts.oauth);
-    _.assign(opts.oauth, res);
-    if (opts.assertion) opts.oauth.assertion = opts.assertion;
-    if (self.onRefresh && opts.executeOnRefresh === true) {
-      self.onRefresh.call(self, opts.oauth, old, function(err3) {
-        if (err3) return resolver.reject(err3);
-        else return resolver.resolve(opts.oauth);
-      });
-    } else {
-      resolver.resolve(opts.oauth);
-    }
-  });
+  this._apiAuthRequest(opts)
+    .then(res => {
+      var old = _.clone(opts.oauth);
+      _.assign(opts.oauth, res);
+      if (opts.assertion) {
+        opts.oauth.assertion = opts.assertion;
+      }
+      if (self.onRefresh && opts.executeOnRefresh === true) {
+        // TODO: remove callback from onRefresh call
+        self.onRefresh.call(self, opts.oauth, old, function(err3) {
+          if (err3) return result.reject(err3);
+          else return result.resolve(opts.oauth);
+        });
+      } else {
+        result.resolve(opts.oauth);
+      }
+    })
+    .catch(err => result.reject(err));
 
-  return resolver.promise;
+  return result;
 };
 
-Connection.prototype.revokeToken = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.revokeToken = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "token"
   });
 
@@ -366,95 +376,95 @@ Connection.prototype.revokeToken = function(data, callback) {
   if (opts.callbackParam) {
     opts.uri += "&callback=" + opts.callbackParam;
   }
-  return this._apiAuthRequest(opts, opts.callback);
+  return this._apiAuthRequest(opts);
 };
 
-Connection.prototype.getPasswordStatus = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.getPasswordStatus = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "id"
   });
 
   var id = opts.sobject ? opts.sobject.getId() : opts.id;
   opts.resource = "/sobjects/user/" + id + "/password";
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.updatePassword = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.updatePassword = function(data) {
+  var opts = this._getOpts(data);
   var id = opts.sobject ? opts.sobject.getId() : opts.id;
   opts.resource = "/sobjects/user/" + id + "/password";
   opts.method = "POST";
   opts.body = JSON.stringify({ newPassword: opts.newPassword });
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getIdentity = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.getIdentity = function(data) {
+  var opts = this._getOpts(data);
   opts.uri = opts.oauth.id;
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
 /*****************************
  * system api methods
  *****************************/
 
-Connection.prototype.getVersions = function(callback) {
-  var opts = this._getOpts(null, callback);
+Connection.prototype.getVersions = function() {
+  var opts = this._getOpts(null);
   opts.uri = "http://na1.salesforce.com/services/data/";
   opts.method = "GET";
-  return this._apiAuthRequest(opts, callback);
+  return this._apiAuthRequest(opts);
 };
 
-Connection.prototype.getResources = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.getResources = function(data) {
+  var opts = this._getOpts(data);
   opts.resource = "/";
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getSObjects = function(data, callback) {
+Connection.prototype.getSObjects = function(data) {
   //TODO: fix me! var self = this;
-  var opts = this._getOpts(data, callback);
+  var opts = this._getOpts(data);
   opts.resource = "/sobjects";
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getMetadata = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.getMetadata = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "type"
   });
   opts.resource = "/sobjects/" + opts.type;
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getDescribe = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.getDescribe = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "type"
   });
   opts.resource = "/sobjects/" + opts.type + "/describe";
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getLimits = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.getLimits = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "type"
   });
   opts.resource = "/limits";
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
 /*****************************
  * crud methods
  *****************************/
 
-Connection.prototype.insert = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.insert = function(data) {
+  var opts = this._getOpts(data);
   var type = opts.sobject.getType();
   opts.resource = "/sobjects/" + type;
   opts.method = "POST";
@@ -467,11 +477,11 @@ Connection.prototype.insert = function(data, callback) {
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(false));
   }
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.update = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.update = function(data) {
+  var opts = this._getOpts(data);
   var type = opts.sobject.getType();
   var id = opts.sobject.getId();
   opts.resource = "/sobjects/" + type + "/" + id;
@@ -485,34 +495,34 @@ Connection.prototype.update = function(data, callback) {
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(true));
   }
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.upsert = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.upsert = function(data) {
+  var opts = this._getOpts(data);
   var type = opts.sobject.getType();
   var extIdField = opts.sobject.getExternalIdField();
   var extId = opts.sobject.getExternalId();
   opts.resource = "/sobjects/" + type + "/" + extIdField + "/" + extId;
   opts.method = "PATCH";
   opts.body = JSON.stringify(opts.sobject._getPayload(false));
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.delete = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.delete = function(data) {
+  var opts = this._getOpts(data);
   var type = opts.sobject.getType();
   var id = opts.sobject.getId();
   opts.resource = "/sobjects/" + type + "/" + id;
   opts.method = "DELETE";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getRecord = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.getRecord = function(data) {
+  var opts = this._getOpts(data);
   var type = opts.sobject ? opts.sobject.getType() : opts.type;
   var id = opts.sobject ? opts.sobject.getId() : opts.id;
-  var resolver = promises.createResolver(opts.callback);
+  var result = new Promise();
 
   opts.resource = "/sobjects/" + type + "/" + id;
   opts.method = "GET";
@@ -524,88 +534,83 @@ Connection.prototype.getRecord = function(data, callback) {
     opts.resource += "?" + qs.stringify({ fields: opts.fields.join() });
   }
 
-  this._apiRequest(opts, function(err, resp) {
-    if (err) {
-      return resolver.reject(err);
-    }
-    if (!opts.raw) {
-      resp = new Record(resp);
-      resp._reset();
-    }
-    resolver.resolve(resp);
-  });
+  this._apiRequest(opts)
+    .then(resp => {
+      if (!opts.raw) {
+        resp = new Record(resp);
+        resp._reset();
+      }
+      result.resolve(resp);
+    })
+    .catch(err => result.reject(err));
 
-  return resolver.promise;
+  return result;
 };
 
 /*****************************
  * blob/binary methods
  *****************************/
 
-Connection.prototype.getBody = function(data, callback) {
-  var opts = this._getOpts(data, callback);
-  var type = opts.sobject ? opts.sobject.getType() : opts.type;
-
-  type = type.toLowerCase();
+Connection.prototype.getBody = function(data) {
+  const opts = this._getOpts(data);
+  const type = (opts.sobject
+    ? opts.sobject.getType()
+    : opts.type
+  ).toLowerCase();
 
   if (type === "document") {
-    return this.getDocumentBody(opts, opts.callback);
+    return this.getDocumentBody(opts);
   } else if (type === "attachment") {
-    return this.getAttachmentBody(opts, opts.callback);
+    return this.getAttachmentBody(opts);
   } else if (type === "contentversion") {
-    return this.getContentVersionData(opts, opts.callback);
+    return this.getContentVersionData(opts);
   } else {
-    var resolver = promises.createResolver(opts.callback);
-    // resolve async
-    process.nextTick(function() {
-      resolver.reject(new Error("invalid type: " + type));
-    });
-    return resolver.promise;
+    return Promise.reject(new Error("invalid type: " + type));
   }
 };
 
-Connection.prototype.getAttachmentBody = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.getAttachmentBody = function(data) {
+  var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = "/sobjects/attachment/" + id + "/body";
   opts.method = "GET";
   opts.blob = true;
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getDocumentBody = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.getDocumentBody = function(data) {
+  var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = "/sobjects/document/" + id + "/body";
   opts.method = "GET";
   opts.blob = true;
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getContentVersionBody = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.getContentVersionBody = function(data) {
+  var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = "/sobjects/contentversion/" + id + "/body";
   opts.method = "GET";
   opts.blob = true;
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.getContentVersionData = function(data, callback) {
-  var opts = this._getOpts(data, callback);
+Connection.prototype.getContentVersionData = function(data) {
+  var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = "/sobjects/contentversion/" + id + "/versiondata";
   opts.method = "GET";
   opts.blob = true;
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
 /*****************************
  * query
  *****************************/
 
-Connection.prototype.query = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.query = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "query",
     defaults: {
       fetchAll: false,
@@ -613,11 +618,11 @@ Connection.prototype.query = function(data, callback) {
       raw: false
     }
   });
-  return this._queryHandler(opts, opts.callback);
+  return this._queryHandler(opts);
 };
 
-Connection.prototype.queryAll = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.queryAll = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "query",
     defaults: {
       fetchAll: false,
@@ -625,14 +630,14 @@ Connection.prototype.queryAll = function(data, callback) {
     }
   });
   opts.includeDeleted = true;
-  return this._queryHandler(opts, opts.callback);
+  return this._queryHandler(opts);
 };
 
-Connection.prototype._queryHandler = function(data, callback) {
+Connection.prototype._queryHandler = function(data) {
   var self = this;
   var recs = [];
-  var opts = this._getOpts(data, callback);
-  var resolver = promises.createResolver(opts.callback);
+  var opts = this._getOpts(data);
+  var result = new Promise();
 
   opts.method = "GET";
   opts.resource = "/query";
@@ -645,72 +650,70 @@ Connection.prototype._queryHandler = function(data, callback) {
     q: opts.query
   };
 
-  function handleResults(err, resp) {
-    if (err) {
-      return resolver.reject(err);
+  // Separate function definition
+  // since it might get called recursive
+  function handleResponse(resp) {
+    if (resp.records && resp.records.length > 0) {
+      _.each(resp.records, function(r) {
+        if (opts.raw) {
+          recs.push(r);
+        } else {
+          var rec = new Record(r);
+          rec._reset();
+          recs.push(rec);
+        }
+      });
+    }
+    if (opts.fetchAll && resp.nextRecordsUrl) {
+      self
+        .getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
+        .then(res2 => handleResponse(res2))
+        .catch(err => result.reject(err));
     } else {
-      if (resp.records && resp.records.length > 0) {
-        _.each(resp.records, function(r) {
-          if (opts.raw) {
-            recs.push(r);
-          } else {
-            var rec = new Record(r);
-            rec._reset();
-            recs.push(rec);
-          }
-        });
-      }
-      if (opts.fetchAll && resp.nextRecordsUrl) {
-        self.getUrl(
-          { url: resp.nextRecordsUrl, oauth: opts.oauth },
-          handleResults
-        );
-      } else {
-        resp.records = recs;
-        return resolver.resolve(resp);
-      }
+      resp.records = recs;
+      return result.resolve(resp);
     }
   }
 
-  this._apiRequest(opts, handleResults);
+  this._apiRequest(opts)
+    .then(resp => handleResponse(resp))
+    .catch(err => result.reject(err));
 
-  return resolver.promise;
+  return result;
 };
 
 /*****************************
  * search
  *****************************/
 
-Connection.prototype.search = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.search = function(data) {
+  const opts = this._getOpts(data, null, {
     singleProp: "search",
     defaults: {
       raw: false
     }
   });
-  var resolver = promises.createResolver(opts.callback);
+  const result = new Promise();
 
   opts.resource = "/search";
   opts.method = "GET";
   opts.qs = { q: opts.search };
 
-  this._apiRequest(opts, function(err, resp) {
-    if (err) {
-      return resolver.reject(err);
-    } else {
+  this._apiRequest(opts)
+    .then(resp => {
       if (opts.raw || !resp.length) {
-        return resolver.resolve(resp);
+        return result.resolve(resp);
       } else {
         var recs = [];
         resp.forEach(function(r) {
           recs.push(new Record(r));
         });
-        return resolver.resolve(resp);
+        return result.resolve(resp);
       }
-    }
-  });
+    })
+    .catch(err => result.reject(err));
 
-  return resolver.promise;
+  return result;
 };
 
 function requireForwardSlash(uri) {
@@ -721,50 +724,54 @@ function requireForwardSlash(uri) {
   return uri;
 }
 
-Connection.prototype.getUrl = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.getUrl = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "url"
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
   opts.method = "GET";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.putUrl = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.putUrl = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "url"
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
   opts.method = "PUT";
-  if (opts.body) opts.body = JSON.stringify(opts.body);
-  return this._apiRequest(opts, opts.callback);
+  if (opts.body) {
+    opts.body = JSON.stringify(opts.body);
+  }
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.postUrl = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.postUrl = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "url"
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
   opts.method = "POST";
-  if (opts.body) opts.body = JSON.stringify(opts.body);
-  return this._apiRequest(opts, opts.callback);
+  if (opts.body) {
+    opts.body = JSON.stringify(opts.body);
+  }
+  return this._apiRequest(opts);
 };
 
-Connection.prototype.deleteUrl = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.deleteUrl = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "url"
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
   opts.method = "DELETE";
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
 /*****************************
  * apex rest
  *****************************/
 
-Connection.prototype.apexRest = function(data, callback) {
-  var opts = this._getOpts(data, callback, {
+Connection.prototype.apexRest = function(data) {
+  var opts = this._getOpts(data, null, {
     singleProp: "uri"
   });
   // Allow for data.uri to start with or without a /
@@ -776,7 +783,7 @@ Connection.prototype.apexRest = function(data, callback) {
   if (opts.urlParams) {
     opts.qs = opts.urlParams;
   }
-  return this._apiRequest(opts, opts.callback);
+  return this._apiRequest(opts);
 };
 
 /*****************************
@@ -819,59 +826,46 @@ Connection.prototype.stream = function(data) {
  * auto-refresh
  *****************************/
 
-Connection.prototype.autoRefreshToken = function(data, callback) {
-  var self = this;
+Connection.prototype.autoRefreshToken = function(data) {
+  const self = this;
 
-  var opts = this._getOpts(data, callback, {
+  const opts = this._getOpts(data, null, {
     defaults: {
       executeOnRefresh: true
     }
   });
 
-  var resolver = promises.createResolver(opts.callback);
+  const result = new Promise();
 
-  var refreshOpts = {
+  const refreshOpts = {
     oauth: opts.oauth,
     executeOnRefresh: opts.executeOnRefresh
   };
 
   // auto-refresh: refresh token
   if (opts.oauth.refresh_token) {
-    Connection.prototype.refreshToken.call(self, refreshOpts, function(
-      err,
-      res
-    ) {
-      if (err) {
-        return resolver.reject(err);
-      } else {
-        return resolver.resolve(res);
-      }
-    });
+    Connection.prototype.refreshToken
+      .call(self, refreshOpts)
+      .then(res => result.resolve(res))
+      .catch(err => result.reject(err));
     // auto-refresh: un/pw
   } else {
-    Connection.prototype.authenticate.call(self, refreshOpts, function(
-      err,
-      res
-    ) {
-      if (err) {
-        return resolver.reject(err);
-      } else {
-        return resolver.resolve(res);
-      }
-    });
+    Connection.prototype.authenticate
+      .call(self, refreshOpts)
+      .then(res => result.resolve(res))
+      .catch(err => result.reject(err));
   }
 
-  return resolver.promise;
+  return result;
 };
 
 /*****************************
- * internal api methods
+ * internal api methods - Promises based, no callbacks
  *****************************/
 
-Connection.prototype._apiAuthRequest = function(opts, callback) {
-  var self = this;
-
-  var resolver = opts._resolver || promises.createResolver(callback);
+Connection.prototype._apiAuthRequest = function(opts) {
+  const self = this;
+  const result = new Promise();
 
   // set timeout
   if (this.timeout) {
@@ -899,19 +893,18 @@ Connection.prototype._apiAuthRequest = function(opts, callback) {
       if (jBody.access_token && self.mode === "single") {
         self.oauth = jBody;
       }
-      resolver.resolve(jBody);
+      result.resolve(jBody);
     })
-    .catch(err => resolver.reject(err));
+    .catch(err => result.reject(err));
 
-  return resolver.promise;
+  return result;
 };
 
-Connection.prototype._apiRequest = function(opts, callback) {
+Connection.prototype._apiRequest = function(opts) {
   /**
    * options:
    * - sobject
    * - uri
-   * - callback
    * - oauth
    * - multipart
    * - method
@@ -923,17 +916,17 @@ Connection.prototype._apiRequest = function(opts, callback) {
 
   const self = this;
   const ropts = optionHelper.getApiRequestOptions(opts);
-  const resolver = optionHelper.getApiRequestResolver(opts, callback);
+  const result = new Promise();
   const sobject = opts.sobject;
 
   fetch(ropts.uri, ropts)
     .then(res => responseFailureCheck(res))
-    .then(res => unsucessFullResponseCheck(res, self, ropts))
-    .then(res => (util.isJsonResponse(res) ? res.json() : res.txt()))
-    .then(body => processResponse(body, resolver, sobject))
-    .catch(err => resolver.reject(err));
+    .then(res => unsucessfullResponseCheck(res, self, ropts))
+    .then(res => (util.isJsonResponse(res) ? res.json() : res.text()))
+    .then(body => processResponse(body, result, sobject))
+    .catch(err => result.reject(err));
 
-  return resolver.promise;
+  return result;
 };
 
 /*
@@ -964,7 +957,7 @@ function responseFailureCheck(res) {
 /*
  * Process the positive response from an API call
 */
-function processResponse(body, resolver, sobject) {
+function processResponse(body, result, sobject) {
   // attach the id back to the sobject on insert
   if (sobject) {
     if (sobject._reset) {
@@ -975,10 +968,10 @@ function processResponse(body, resolver, sobject) {
     }
   }
   // Done - finally!
-  resolver.resolve(body);
+  return result.resolve(body);
 }
 
-function unsucessFullResponseCheck(res, self, opts) {
+function unsucessfullResponseCheck(res, self, opts) {
   // Only interested when stuff went wrong
   if (res.ok) {
     return res;
@@ -1014,20 +1007,21 @@ function unsucessFullResponseCheck(res, self, opts) {
     !opts._retryCount
   ) {
     // attempt the autorefresh
-    Connection.prototype.autoRefreshToken.call(self, opts, function(
-      err2 /*, res2*/
-    ) {
-      if (err2) {
-        throw err2;
-      } else {
+    Connection.prototype.autoRefreshToken
+      .call(self, opts)
+      .then(res => {
+        opts._refreshResult = res;
         opts._retryCount = 1;
-        //opts._resolver = resolver;
         return Connection.prototype._apiRequest.call(self, opts);
-      }
-    });
+      })
+      .catch(err2 => {
+        throw err2;
+      });
   } else {
     throw e;
   }
+
+  return res;
 }
 
 /*****************************
@@ -1081,11 +1075,11 @@ const createConnection = function(opts) {
 };
 
 const createSObject = function(type, fields) {
-  var data = fields || {};
+  const data = fields || {};
   data.attributes = {
     type: type
   };
-  var rec = new Record(data);
+  const rec = new Record(data);
   return rec;
 };
 

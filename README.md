@@ -18,6 +18,10 @@ Read it [here](https://www.npmjs.com/package/nforce)
 
 Evolving documentation on [github.io](https://stwissel.github.io/nforce8)
 
+## Important differences
+
+- Version numbers, if provided, **must** be full qualified strings like `v42.0`, short numbers or string are no longer accepted. These will fail <strike>42 42.0 '42'</strike>
+
 ## Change Log
 
 Overview documentation on [changes between versions](https://stwissel.github.io/nforce8/Changelog.html)
