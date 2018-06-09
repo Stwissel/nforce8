@@ -10,7 +10,7 @@ I'm maintaining the [NodeRED](https://nodered.org/) modules for Salesforce: [nod
 Probably in the upcoming 2.0 release Kevin will make this fork obsolete
 
 [![Build Status](https://secure.travis-ci.org/stwissel/nforce8.png)](http://travis-ci.org/kevinohara80/nforce)
-[![npm version](https://badge.fury.io/js/nforce8.svg)](https://badge.fury.io/js/nforce8)
+[![npm version](https://badge.fury.io/js/nforce8.svg)](https://badge.fury.io/js/nforce8) [![Greenkeeper badge](https://badges.greenkeeper.io/Stwissel/nforce8.svg)](https://greenkeeper.io/)
 
 
 ## Original Documentation (replace nforce with nforce8)
