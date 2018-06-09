@@ -22,11 +22,11 @@
     "bluebird": "^3.5.1",
     "faye": "1.2.4",
     "lodash": "^4.17.5",
-    "mime": "2.0.3",
-    "request": "2.86.0"
+    "mime": "2.3.1",
+    "request": "2.87.0"
   },
   "devDependencies": {
-    "body-parser": "1.18.2",
+    "body-parser": "1.18.3",
     "cookie-parser": "1.4.3",
     "express": "4.16.3",
     "express-session": "1.15.6",
