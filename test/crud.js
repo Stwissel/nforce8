@@ -1,115 +1,153 @@
-var nforce = require('../');
-var should = require('should');
-var api    = require('./mock/sfdc-rest-api');
-var port   = process.env.PORT || 3000;
+const nforce = require("../");
+const should = require("should");
+const CONST = require("../lib/constants");
+const apiVersion = CONST.API;
 
-var server;
-var lastRequest;
+const api = require("./mock/sfdc-rest-api");
+const port = process.env.PORT || 3000;
 
 var org = nforce.createConnection(api.getClient());
 
 var oauth = api.getOAuth();
 
-describe('api-mock-crud', function() {
-
+describe("api-mock-crud", function() {
   // set up mock server
   before(function(done) {
     api.start(port, done);
   });
 
-  describe('#insert', function() {
-
-    it('should create a proper request on insert', function(done) {
-      var obj = nforce.createSObject('Account', {
-        Name: 'Test Account',
-        Test_Field__c: 'blah'
+  describe("#insert", function() {
+    it("should create a proper request on insert", function(done) {
+      var obj = nforce.createSObject("Account", {
+        Name: "Test Account",
+        Test_Field__c: "blah"
       });
       var hs = {
-        'sforce-auto-assign': '1'
+        "sforce-auto-assign": "1"
       };
-      org.insert({ sobject: obj, oauth: oauth, headers: hs }, function(err, res) {
-        if(err) throw err;
-        var body = JSON.parse(api.getLastRequest().body);
-        should.exist(body.name);
-        should.exist(body.test_field__c);
-        api.getLastRequest().url.should.equal('/services/data/v27.0/sobjects/account');
-        api.getLastRequest().method.should.equal('POST');
-        var hKey = Object.keys(hs)[0];
-        should.exist(api.getLastRequest().headers[hKey]);
-        api.getLastRequest().headers[hKey].should.equal(hs[hKey]);
-        done();
-      });
+      org
+        .insert({ sobject: obj, oauth: oauth, headers: hs })
+        .then(res => {
+          should.exist(res);
+          var body = JSON.parse(api.getLastRequest().body);
+          should.exist(body.name);
+          should.exist(body.test_field__c);
+          api
+            .getLastRequest()
+            .url.should.equal(
+              "/services/data/" + apiVersion + "/sobjects/account"
+            );
+          api.getLastRequest().method.should.equal("POST");
+          var hKey = Object.keys(hs)[0];
+          should.exist(api.getLastRequest().headers[hKey]);
+          api.getLastRequest().headers[hKey].should.equal(hs[hKey]);
+          done();
+        })
+        .catch(err => {
+          should.not.exist(err);
+          done();
+        });
     });
-
   });
 
-  describe('#update', function() {
-
-    it('should create a proper request on update', function(done) {
-      var obj = nforce.createSObject('Account', {
-        Name: 'Test Account',
-        Test_Field__c: 'blah'
+  describe("#update", function() {
+    it("should create a proper request on update", function(done) {
+      var obj = nforce.createSObject("Account", {
+        Name: "Test Account",
+        Test_Field__c: "blah"
       });
-      obj.setId('someid');
-      org.update({ sobject: obj, oauth: oauth }, function(err, res) {
-        if(err) throw err;
-        api.getLastRequest().url.should.equal('/services/data/v27.0/sobjects/account/someid');
-        api.getLastRequest().method.should.equal('PATCH');
-        done();
-      });
+      obj.setId("someid");
+      org
+        .update({ sobject: obj, oauth: oauth })
+        .then(res => {
+          should.exist(res);
+          api
+            .getLastRequest()
+            .url.should.equal(
+              "/services/data/" + apiVersion + "/sobjects/account/someid"
+            );
+          api.getLastRequest().method.should.equal("PATCH");
+          done();
+        })
+        .catch(err => {
+          should.not.exist(err);
+          done();
+        });
     });
-
   });
 
-  describe('#upsert', function() {
-
-    it('should create a proper request on upsert', function(done) {
-      var obj = nforce.createSObject('Account', {
-        Name: 'Test Account',
-        Test_Field__c: 'blah'
+  describe("#upsert", function() {
+    it("should create a proper request on upsert", function(done) {
+      var obj = nforce.createSObject("Account", {
+        Name: "Test Account",
+        Test_Field__c: "blah"
       });
-      obj.setExternalId('My_Ext_Id__c', 'abc123');
-      org.upsert({ sobject: obj, oauth: oauth }, function(err, res) {
-        if(err) throw err;
-        var body = JSON.parse(api.getLastRequest().body);
-        should.exist(body.name);
-        should.exist(body.test_field__c);
-        api.getLastRequest().url.should.equal('/services/data/v27.0/sobjects/account/my_ext_id__c/abc123');
-        api.getLastRequest().method.should.equal('PATCH');
-        done();
-      });
+      obj.setExternalId("My_Ext_Id__c", "abc123");
+      org
+        .upsert({ sobject: obj, oauth: oauth })
+        .then(res => {
+          should.exist(res);
+          var body = JSON.parse(api.getLastRequest().body);
+          should.exist(body.name);
+          should.exist(body.test_field__c);
+          api
+            .getLastRequest()
+            .url.should.equal(
+              "/services/data/" +
+                apiVersion +
+                "/sobjects/account/my_ext_id__c/abc123"
+            );
+          api.getLastRequest().method.should.equal("PATCH");
+          done();
+        })
+        .catch(err => {
+          should.not.exist(err);
+          done();
+        });
     });
-
   });
 
-  describe('#delete', function() {
-
-    it('should create a proper request on delete', function(done) {
-      var obj = nforce.createSObject('Account', {
-        Name: 'Test Account',
-        Test_Field__c: 'blah'
+  describe("#delete", function() {
+    it("should create a proper request on delete", function(done) {
+      var obj = nforce.createSObject("Account", {
+        Name: "Test Account",
+        Test_Field__c: "blah"
       });
-      obj.setId('someid');
-      org.delete({ sobject: obj, oauth: oauth }, function(err, res) {
-        if(err) throw err;
-        api.getLastRequest().url.should.equal('/services/data/v27.0/sobjects/account/someid');
-        api.getLastRequest().method.should.equal('DELETE');
-        done();
-      });
+      obj.setId("someid");
+      org
+        .delete({ sobject: obj, oauth: oauth })
+        .then(res => {
+          should.exist(res);
+          api
+            .getLastRequest()
+            .url.should.equal(
+              "/services/data/" + apiVersion + "/sobjects/account/someid"
+            );
+          api.getLastRequest().method.should.equal("DELETE");
+          done();
+        })
+        .catch(err => {
+          should.not.exist(err);
+          done();
+        });
     });
-
   });
 
-  describe('#apexRest', function() {
-
-    it('should create a proper request for a custom Apex REST endpoint', function(done) {
-      org.apexRest({ uri: 'sample', oauth: oauth }, function(err, res) {
-        api.getLastRequest().url.should.equal('/services/apexrest/sample');
-        api.getLastRequest().method.should.equal('GET');
-        done();
-      });
+  describe("#apexRest", function() {
+    it("should create a proper request for a custom Apex REST endpoint", function(done) {
+      org
+        .apexRest({ uri: "sample", oauth: oauth })
+        .then(res => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal("/services/apexrest/sample");
+          api.getLastRequest().method.should.equal("GET");
+          done();
+        })
+        .catch(err => {
+          should.not.exist(err);
+          done();
+        });
     });
-
   });
 
   // reset the lastRequest
@@ -121,5 +159,4 @@ describe('api-mock-crud', function() {
   after(function(done) {
     api.stop(done);
   });
-
 });

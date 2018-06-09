@@ -1,8 +1,9 @@
 {
   "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
   "name": "nforce8",
-  "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "1.10.0-fork",
+  "description":
+    "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
+  "version": "2.0.2-alpha",
   "keywords": [
     "salesforce",
     "salesforce.com",
@@ -19,21 +20,16 @@
   },
   "main": "index.js",
   "dependencies": {
-    "bluebird": "^3.5.1",
     "faye": "1.2.4",
     "lodash": "^4.17.5",
     "mime": "2.3.1",
-    "request": "2.87.0"
+    "node-fetch": "^2.1.2"
   },
   "devDependencies": {
     "body-parser": "1.18.3",
     "cookie-parser": "1.4.3",
     "express": "4.16.3",
     "express-session": "1.15.6",
-    "gulp-jshint": "^2.1.0",
-    "gulp4": "^4.0.3",
-    "jshint": "^2.9.5",
-    "jshint-stylish": "^2.2.1",
     "mocha": "^5.1.1",
     "pug": "^2.0.3",
     "run-sequence": "^2.2.0",
