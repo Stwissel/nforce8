@@ -2,7 +2,6 @@
 
 const fetch = require("node-fetch");
 const qs = require("querystring");
-const zlib = require("zlib");
 const _ = require("lodash");
 const Record = require("./lib/record");
 const FDCStream = require("./lib/fdcstream");
@@ -68,8 +67,10 @@ const Connection = function(opts) {
 
   // Validate API version format
   const apiRegEx = /v[0-9][0-9]\.0/i;
-  if (!this.apiVersion.match(apiRegEx)) {
-    throw new Error("invalid apiVersion number, use v99.0 format");
+  if (this.apiVersion && !this.apiVersion.match(apiRegEx)) {
+    throw new Error(
+      "invalid apiVersion [" + this.apiVersion + "] number, use v99.0 format"
+    );
   }
 
   // parse timeout into integer in case it's a floating point.
@@ -926,122 +927,108 @@ Connection.prototype._apiRequest = function(opts, callback) {
   const sobject = opts.sobject;
 
   fetch(ropts.uri, ropts)
-    .then(res => {
-      if (!res) {
-        throw errors.emptyResponse();
-      } else if (!res.ok) {
-        const err = new Error("Fetch failed:" + res.statusText);
-        err.statusCode = res.statusCode;
-        throw err;
-      } else if (res.headers && res.headers.error) {
-        // Error in the header
-        const err = new Error(res.headers.error);
-        err.statusCode = res.statusCode;
-        throw err;
-      }
-
-      return res;
-    })
-    .then(res => {
-      /* Check for decompression need for BODY  */
-      if (res.headers && res.headers["content-encoding"] === "gzip" && body) {
-        //  response is compressed - decompress it
-        zlib.gunzip(body, function(err, decompressed) {
-          if (err) return resolver.reject(err);
-          body = decompressed;
-          processResponse();
-        });
-      } else {
-        processResponse();
-      }
-    })
-
-    /* process response */
-
+    .then(res => responseFailureCheck(res))
+    .then(res => unsucessFullResponseCheck(res, self, ropts))
+    .then(res => (util.isJsonResponse(res) ? res.json() : res.txt()))
+    .then(body => processResponse(body, resolver, sobject))
     .catch(err => resolver.reject(err));
-
-  function processResponse() {
-    // attempt to parse the json now
-    if (util.isJsonResponse(res)) {
-      if (body) {
-        try {
-          body = JSON.parse(body);
-        } catch (e) {
-          return resolver.reject(errors.invalidJson());
-        }
-      }
-    }
-
-    // salesforce returned an ok of some sort
-    if (res.statusCode >= 200 && res.statusCode <= 204) {
-      // attach the id back to the sobject on insert
-      if (sobject) {
-        if (sobject._reset) {
-          sobject._reset();
-        }
-        if (body && _.isObject(body) && body.id) {
-          sobject._fields.id = body.id;
-        }
-      }
-      return resolver.resolve(body);
-    }
-
-    // error handling
-    var e;
-
-    // error: no body
-    if (!body) {
-      e = new Error(
-        "Salesforce returned no body and status code " + res.statusCode
-      );
-      // error: array body
-    } else if (_.isArray(body) && body.length > 0) {
-      e = new Error(body[0].message);
-      e.errorCode = body[0].errorCode;
-      e.body = body;
-      // error: string body
-    } else if (_.isString(body)) {
-      e = new Error(body);
-      e.errorCode = body;
-      e.body = body;
-    } else {
-      e = new Error(
-        "Salesforce returned an unrecognized error " + res.statusCode
-      );
-      e.body = body;
-    }
-
-    e.statusCode = res.statusCode;
-
-    // confirm auto-refresh support
-    if (
-      e.errorCode &&
-      (e.errorCode === "INVALID_SESSION_ID" ||
-        e.errorCode === "Bad_OAuth_Token") &&
-      self.autoRefresh === true &&
-      (opts.oauth.refresh_token ||
-        (self.getUsername() && self.getPassword())) &&
-      !opts._retryCount
-    ) {
-      // attempt the autorefresh
-      Connection.prototype.autoRefreshToken.call(self, opts, function(
-        err2 /*, res2*/
-      ) {
-        if (err2) {
-          return resolver.reject(err2);
-        } else {
-          opts._retryCount = 1;
-          opts._resolver = resolver;
-          return Connection.prototype._apiRequest.call(self, opts);
-        }
-      });
-    } else {
-      return resolver.reject(e);
-    }
-  }
 
   return resolver.promise;
 };
+
+/*
+ *  Helperfunctions for request checks
+ */
+
+function responseFailureCheck(res) {
+  {
+    if (!res) {
+      throw errors.emptyResponse();
+    } else if (res.headers && res.headers.error) {
+      // Error in the header
+      const err = new Error(res.headers.error);
+      err.statusCode = res.statusCode;
+      throw err;
+    } else if (!res.body) {
+      const err = new Error(
+        "Salesforce returned no body and status code " + res.statusCode
+      );
+      err.statusCode = res.statusCode;
+      throw err;
+    }
+
+    return res;
+  }
+}
+
+/*
+ * Process the positive response from an API call
+*/
+function processResponse(body, resolver, sobject) {
+  // attach the id back to the sobject on insert
+  if (sobject) {
+    if (sobject._reset) {
+      sobject._reset();
+    }
+    if (body && _.isObject(body) && body.id) {
+      sobject._fields.id = body.id;
+    }
+  }
+  // Done - finally!
+  resolver.resolve(body);
+}
+
+function unsucessFullResponseCheck(res, self, opts) {
+  // Only interested when stuff went wrong
+  if (res.ok) {
+    return res;
+  }
+
+  const e = new Error();
+  e.statusCode = res.statusCode;
+  const body = util.isJsonResponse(res) ? res.json() : res.txt();
+
+  // Salesforce sends internal errors as Array
+  if (_.isArray(body) && body.length > 0) {
+    e.message = body[0].message;
+    e.errorCode = body[0].errorCode;
+    e.body = body;
+    // error: string body - Something really went wrong
+  } else if (_.isString(body)) {
+    e.message = body;
+    e.errorCode = body;
+    e.body = body;
+  } else {
+    // Something went totally wrong
+    e.message = "Salesforce returned an unrecognized error " + res.statusCode;
+    e.body = body;
+  }
+
+  // confirm auto-refresh support
+  if (
+    e.errorCode &&
+    (e.errorCode === "INVALID_SESSION_ID" ||
+      e.errorCode === "Bad_OAuth_Token") &&
+    self.autoRefresh === true &&
+    (opts.oauth.refresh_token || (self.getUsername() && self.getPassword())) &&
+    !opts._retryCount
+  ) {
+    // attempt the autorefresh
+    Connection.prototype.autoRefreshToken.call(self, opts, function(
+      err2 /*, res2*/
+    ) {
+      if (err2) {
+        throw err2;
+      } else {
+        opts._retryCount = 1;
+        //opts._resolver = resolver;
+        return Connection.prototype._apiRequest.call(self, opts);
+      }
+    });
+  } else {
+    throw e;
+  }
+}
 
 /*****************************
  * plugin system
