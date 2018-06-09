@@ -10,6 +10,7 @@ branches:
   only:
   - master
   - develop    
+  - /^greenkeeper/.*$/
 deploy:
   provider: npm
   email: stw@linux.com
