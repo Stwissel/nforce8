@@ -12,6 +12,7 @@ The big rewrite (WIP): Transition to TypeScript
 - Swapped `request` for `node-fetch`
 - Added `SFDC_API_VERSION` to read API Version from environment
 - API default now `v42.0` - only fully qualified version strings are accepted
+- Removed callback API support, promises only
 
 ## 1.10.0-fork
 
