@@ -1,3 +1,5 @@
+"use strict";
+
 const nforce = require("../index");
 const should = require("should");
 const api = require("./mock/sfdc-rest-api");
@@ -33,7 +35,7 @@ describe("query", function() {
     var expected =
       "/services/data/" +
       apiVersion +
-      "/query?q=SELECT%20Id%20FROM%20Account%20LIMIT%201";
+      "/query?q=SELECT+Id+FROM+Account+LIMIT+1";
 
     it("should work in multi-user mode with promises", done => {
       orgMulti
@@ -86,7 +88,7 @@ describe("query", function() {
     var expected =
       "/services/data/" +
       apiVersion +
-      "/queryAll?q=SELECT%20Id%20FROM%20Account%20LIMIT%201";
+      "/queryAll?q=SELECT+Id+FROM+Account+LIMIT+1";
 
     it("should work in multi-user mode with promises", done => {
       orgMulti

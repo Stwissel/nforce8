@@ -933,10 +933,11 @@ Connection.prototype._apiRequest = function(opts) {
 
   const self = this;
   const ropts = optionHelper.getApiRequestOptions(opts);
+  const uri = optionHelper.getFullUri(ropts);
   const sobject = opts.sobject;
   const result = new Promise((resolve, reject) => {
     try {
-      fetch(ropts.uri, ropts)
+      fetch(uri, ropts)
         .then(res => responseFailureCheck(res))
         .then(res => unsucessfullResponseCheck(res, self, ropts))
         .then(res => (util.isJsonResponse(res) ? res.json() : res.text()))
