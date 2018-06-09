@@ -8,6 +8,7 @@ This libary is based on a fork of Kevin O'Hara's brilliant
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/719bc9f8685247fc8fdac704e596ee67)](https://www.codacy.com/app/Stwissel/nforce8?utm_source=github.com&utm_medium=referral&utm_content=Stwissel/nforce8&utm_campaign=Badge_Grade)
 [![Build Status](https://secure.travis-ci.org/Stwissel/nforce8.png)](https://travis-ci.org/Stwissel/nforce8)
 [![npm version](https://badge.fury.io/js/nforce8.svg)](https://badge.fury.io/js/nforce8)
+[![Known Vulnerabilities](https://snyk.io/test/github/Stwissel/nforce8/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Stwissel/nforce8?targetFile=package.json)
 
 ## Rationale
 
