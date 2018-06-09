@@ -14,10 +14,6 @@ I'm maintaining the [NodeRED](https://nodered.org/) modules for Salesforce: [nod
 
 Read it [here](https://www.npmjs.com/package/nforce)
 
-## Updated documentation
-
-Evolving documentation on [github.io](https://stwissel.github.io/nforce8)
-
 ## Change Log
 
-Overview documentation on [changes between versions](https://stwissel.github.io/nforce8/Changelog.html)
+Overview documentation on [changes between versions](hangelog.html)

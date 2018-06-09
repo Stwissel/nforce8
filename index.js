@@ -1,4 +1,6 @@
-const request = require("request");
+"use strict";
+
+const fetch = require("node-fetch");
 const qs = require("querystring");
 const zlib = require("zlib");
 const _ = require("lodash");
@@ -8,41 +10,23 @@ const util = require("./lib/util");
 const errors = require("./lib/errors");
 const multipart = require("./lib/multipart");
 const promises = require("./lib/promises");
-const CONST = require("./constants");
+const optionHelper = require("./lib/optionhelper")();
+const CONST = require("./lib/constants");
 
 /*****************************
  * constants
  *****************************/
 
-var plugins = {};
+const plugins = {};
 
 /*****************************
  * connection object
  *****************************/
 
-var Connection = function(opts) {
+const Connection = function(opts) {
   var self = this;
 
-  opts = _.defaults(opts || {}, {
-    clientId: null,
-    clientSecret: null,
-    redirectUri: null,
-    authEndpoint: CONST.AUTH_ENDPOINT,
-    testAuthEndpoint: CONST.TEST_AUTH_ENDPOINT,
-    loginUri: CONST.LOGIN_URI,
-    testLoginUri: CONST.TEST_LOGIN_URI,
-    apiVersion: CONST.API,
-    environment: "production",
-    mode: "multi",
-    gzip: false,
-    autoRefresh: false,
-    onRefresh: undefined,
-    timeout: undefined,
-    oauth: undefined,
-    username: undefined,
-    password: undefined,
-    securityToken: undefined
-  });
+  opts = _.defaults(opts || {}, CONST.defaultOptions);
 
   // convert option values
   opts.environment = opts.environment.toLowerCase();
@@ -187,7 +171,7 @@ Connection.prototype._getOpts = function(d, c, opts) {
 Connection.prototype.getAuthUri = function(opts) {
   if (!opts) opts = {};
 
-  var self = this;
+  const self = this;
 
   var urlOpts = {
     response_type: opts.responseType || "code",
@@ -898,35 +882,25 @@ Connection.prototype._apiAuthRequest = function(opts, callback) {
     _.merge(opts, opts.requestOpts);
   }
 
-  request(opts, function(err, res, body) {
-    // request returned an error
-    if (err) return resolver.reject(err);
-
-    // request didn't return a response. sumptin bad happened
-    if (!res) return resolver.reject(errors.emptyResponse());
-
-    if (body && util.isJsonResponse(res)) {
-      try {
-        body = JSON.parse(body);
-      } catch (e) {
-        return resolver.reject(errors.invalidJson());
+  const uri = opts.uri;
+  fetch(uri, opts)
+    .then(res => {
+      if (!res) {
+        throw errors.emptyResponse();
+      } else if (res.ok) {
+        return res.json();
       }
-    }
-
-    if (res.statusCode === 200) {
-      // detect oauth response for single mode
-      if (body.access_token) {
-        if (self.mode === "single") {
-          self.oauth = body;
-        }
+      const err = new Error("Fetch failed:" + res.statusText);
+      err.statusCode = res.statusCode;
+      throw err;
+    })
+    .then(jBody => {
+      if (jBody.access_token && self.mode === "single") {
+        self.oauth = jBody;
       }
-      return resolver.resolve(body);
-    } else {
-      var e = new Error(body.error + " - " + body.error_description);
-      e.statusCode = res.statusCode;
-      return resolver.reject(e);
-    }
-  });
+      resolver.resolve(jBody);
+    })
+    .catch(err => resolver.reject(err));
 
   return resolver.promise;
 };
@@ -946,194 +920,125 @@ Connection.prototype._apiRequest = function(opts, callback) {
    * - headers
    */
 
-  var self = this;
-  var ropts = {};
-  var resolver = opts._resolver || promises.createResolver(callback);
-  var sobject = opts.sobject;
+  const self = this;
+  const ropts = optionHelper.getApiRequestOptions(opts);
+  const resolver = optionHelper.getApiRequestResolver(opts, callback);
+  const sobject = opts.sobject;
 
-  // construct uri
-
-  if (opts.uri) {
-    ropts.uri = opts.uri;
-  } else {
-    if (!opts.resource || opts.resource.charAt(0) !== "/") {
-      opts.resource = "/" + (opts.resource || "");
-    }
-    ropts.uri = [
-      opts.oauth.instance_url,
-      "/services/data/",
-      this.apiVersion,
-      opts.resource
-    ].join("");
-  }
-
-  // set blob mode
-  if (opts.blob === true) {
-    ropts.encoding = null;
-  }
-
-  ropts.method = opts.method || "GET";
-
-  // set accept headers
-  ropts.headers = {
-    Accept: "application/json;charset=UTF-8"
-  };
-
-  // set oauth header
-  if (opts.oauth) {
-    ropts.headers.Authorization = "Bearer " + opts.oauth.access_token;
-  }
-
-  // set gzip headers
-  if (opts.method === "GET" && this.gzip === true) {
-    ropts.headers["Accept-Encoding"] = "gzip";
-    ropts.encoding = null;
-  }
-
-  // set content-type
-  if (opts.multipart) {
-    ropts.headers["content-type"] = "multipart/form-data";
-    ropts.multipart = opts.multipart;
-    ropts.preambleCRLF = true;
-    ropts.postambleCRLF = true;
-  } else {
-    ropts.headers["content-type"] = "application/json";
-  }
-
-  // set additional user-supplied headers
-  if (opts.headers) {
-    for (var item in opts.headers) {
-      ropts.headers[item] = opts.headers[item];
-    }
-  }
-
-  // set body
-  if (opts.body) {
-    ropts.body = opts.body;
-  }
-
-  // process qs
-  if (opts.qs) {
-    ropts.qs = opts.qs;
-  }
-
-  // process request opts
-  if (opts.requestOpts) {
-    _.merge(ropts, opts.requestOpts);
-  }
-
-  // set timeout
-  if (this.timeout) {
-    ropts.timeout = this.timeout;
-  }
-
-  // initiate the request
-  request(ropts, function(err, res, body) {
-    // request returned an error
-    if (err) return resolver.reject(err);
-
-    // request didn't return a response. Sumptin bad happened
-    if (!res) return resolver.reject(errors.emptyResponse());
-
-    // salesforce returned no body but an error in the header
-    if (!body && res.headers && res.headers.error) {
-      var e = new Error(res.headers.error);
-      e.statusCode = res.statusCode;
-      return resolver.reject(e);
-    }
-
-    function processResponse() {
-      // attempt to parse the json now
-      if (util.isJsonResponse(res)) {
-        if (body) {
-          try {
-            body = JSON.parse(body);
-          } catch (e) {
-            return resolver.reject(errors.invalidJson());
-          }
-        }
+  fetch(ropts.uri, ropts)
+    .then(res => {
+      if (!res) {
+        throw errors.emptyResponse();
+      } else if (!res.ok) {
+        const err = new Error("Fetch failed:" + res.statusText);
+        err.statusCode = res.statusCode;
+        throw err;
+      } else if (res.headers && res.headers.error) {
+        // Error in the header
+        const err = new Error(res.headers.error);
+        err.statusCode = res.statusCode;
+        throw err;
       }
 
-      // salesforce returned an ok of some sort
-      if (res.statusCode >= 200 && res.statusCode <= 204) {
-        // attach the id back to the sobject on insert
-        if (sobject) {
-          if (sobject._reset) {
-            sobject._reset();
-          }
-          if (body && _.isObject(body) && body.id) {
-            sobject._fields.id = body.id;
-          }
-        }
-        return resolver.resolve(body);
-      }
-
-      // error handling
-      var e;
-
-      // error: no body
-      if (!body) {
-        e = new Error(
-          "Salesforce returned no body and status code " + res.statusCode
-        );
-        // error: array body
-      } else if (_.isArray(body) && body.length > 0) {
-        e = new Error(body[0].message);
-        e.errorCode = body[0].errorCode;
-        e.body = body;
-        // error: string body
-      } else if (_.isString(body)) {
-        e = new Error(body);
-        e.errorCode = body;
-        e.body = body;
-      } else {
-        e = new Error(
-          "Salesforce returned an unrecognized error " + res.statusCode
-        );
-        e.body = body;
-      }
-
-      e.statusCode = res.statusCode;
-
-      // confirm auto-refresh support
-      if (
-        e.errorCode &&
-        (e.errorCode === "INVALID_SESSION_ID" ||
-          e.errorCode === "Bad_OAuth_Token") &&
-        self.autoRefresh === true &&
-        (opts.oauth.refresh_token ||
-          (self.getUsername() && self.getPassword())) &&
-        !opts._retryCount
-      ) {
-        // attempt the autorefresh
-        Connection.prototype.autoRefreshToken.call(self, opts, function(
-          err2 /*, res2*/
-        ) {
-          if (err2) {
-            return resolver.reject(err2);
-          } else {
-            opts._retryCount = 1;
-            opts._resolver = resolver;
-            return Connection.prototype._apiRequest.call(self, opts);
-          }
+      return res;
+    })
+    .then(res => {
+      /* Check for decompression need for BODY  */
+      if (res.headers && res.headers["content-encoding"] === "gzip" && body) {
+        //  response is compressed - decompress it
+        zlib.gunzip(body, function(err, decompressed) {
+          if (err) return resolver.reject(err);
+          body = decompressed;
+          processResponse();
         });
       } else {
-        return resolver.reject(e);
+        processResponse();
+      }
+    })
+
+    /* process response */
+
+    .catch(err => resolver.reject(err));
+
+  function processResponse() {
+    // attempt to parse the json now
+    if (util.isJsonResponse(res)) {
+      if (body) {
+        try {
+          body = JSON.parse(body);
+        } catch (e) {
+          return resolver.reject(errors.invalidJson());
+        }
       }
     }
 
-    // check for gzip compression
-    if (res.headers && res.headers["content-encoding"] === "gzip" && body) {
-      //  response is compressed - decompress it
-      zlib.gunzip(body, function(err, decompressed) {
-        if (err) return resolver.reject(err);
-        body = decompressed;
-        processResponse();
+    // salesforce returned an ok of some sort
+    if (res.statusCode >= 200 && res.statusCode <= 204) {
+      // attach the id back to the sobject on insert
+      if (sobject) {
+        if (sobject._reset) {
+          sobject._reset();
+        }
+        if (body && _.isObject(body) && body.id) {
+          sobject._fields.id = body.id;
+        }
+      }
+      return resolver.resolve(body);
+    }
+
+    // error handling
+    var e;
+
+    // error: no body
+    if (!body) {
+      e = new Error(
+        "Salesforce returned no body and status code " + res.statusCode
+      );
+      // error: array body
+    } else if (_.isArray(body) && body.length > 0) {
+      e = new Error(body[0].message);
+      e.errorCode = body[0].errorCode;
+      e.body = body;
+      // error: string body
+    } else if (_.isString(body)) {
+      e = new Error(body);
+      e.errorCode = body;
+      e.body = body;
+    } else {
+      e = new Error(
+        "Salesforce returned an unrecognized error " + res.statusCode
+      );
+      e.body = body;
+    }
+
+    e.statusCode = res.statusCode;
+
+    // confirm auto-refresh support
+    if (
+      e.errorCode &&
+      (e.errorCode === "INVALID_SESSION_ID" ||
+        e.errorCode === "Bad_OAuth_Token") &&
+      self.autoRefresh === true &&
+      (opts.oauth.refresh_token ||
+        (self.getUsername() && self.getPassword())) &&
+      !opts._retryCount
+    ) {
+      // attempt the autorefresh
+      Connection.prototype.autoRefreshToken.call(self, opts, function(
+        err2 /*, res2*/
+      ) {
+        if (err2) {
+          return resolver.reject(err2);
+        } else {
+          opts._retryCount = 1;
+          opts._resolver = resolver;
+          return Connection.prototype._apiRequest.call(self, opts);
+        }
       });
     } else {
-      processResponse();
+      return resolver.reject(e);
     }
-  });
+  }
 
   return resolver.promise;
 };
