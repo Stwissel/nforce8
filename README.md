@@ -9,6 +9,7 @@ This libary is based on a fork of Kevin O'Hara's brilliant
 [![Build Status](https://secure.travis-ci.org/Stwissel/nforce8.png)](https://travis-ci.org/Stwissel/nforce8)
 [![npm version](https://badge.fury.io/js/nforce8.svg)](https://badge.fury.io/js/nforce8)
 [![Known Vulnerabilities](https://snyk.io/test/github/Stwissel/nforce8/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Stwissel/nforce8?targetFile=package.json)
+[![Greenkeeper badge](https://badges.greenkeeper.io/Stwissel/nforce8.svg)](https://greenkeeper.io/)
 
 ## Rationale
 

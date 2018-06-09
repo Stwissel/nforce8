@@ -22,11 +22,11 @@
   "dependencies": {
     "faye": "1.2.4",
     "lodash": "^4.17.5",
-    "mime": "2.0.3",
+    "mime": "2.3.1",
     "node-fetch": "^2.1.2"
   },
   "devDependencies": {
-    "body-parser": "1.18.2",
+    "body-parser": "1.18.3",
     "cookie-parser": "1.4.3",
     "express": "4.16.3",
     "express-session": "1.15.6",
