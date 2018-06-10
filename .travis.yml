@@ -11,6 +11,9 @@ branches:
   - master
   - develop    
   - /^greenkeeper/.*$/
+after_success:
+  - npm run coverage
+  - npm run test-with-coverage  
 deploy:
   provider: npm
   email: stw@linux.com

@@ -10,6 +10,7 @@ This libary is based on a fork of Kevin O'Hara's brilliant
 [![npm version](https://badge.fury.io/js/nforce8.svg)](https://badge.fury.io/js/nforce8)
 [![Known Vulnerabilities](https://snyk.io/test/github/Stwissel/nforce8/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Stwissel/nforce8?targetFile=package.json)
 [![Greenkeeper badge](https://badges.greenkeeper.io/Stwissel/nforce8.svg)](https://greenkeeper.io/)
+[![Coverage Status](https://coveralls.io/repos/github/Stwissel/nforce8/badge.svg?branch=master)](https://coveralls.io/github/Stwissel/nforce8?branch=master)
 
 ## Rationale
 
@@ -26,6 +27,8 @@ Evolving documentation on [github.io](https://stwissel.github.io/nforce8)
 ## Important differences
 
 - Version numbers, if provided, **must** be full qualified strings like `v42.0`, short numbers or string are no longer accepted. These will fail <strike>42 42.0 '42'</strike>
+- nforce8 only works with promises, no callback support
+- Subscriptions to events need the full path, option of type gets ignored
 
 ## Change Log
 
