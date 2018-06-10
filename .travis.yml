@@ -12,8 +12,8 @@ branches:
   - develop    
   - /^greenkeeper/.*$/
 after_success:
-  - npm run coverage
-  - npm run test-with-coverage  
+  - npm run coveralls
+  - npm run codacy  
 deploy:
   provider: npm
   email: stw@linux.com
