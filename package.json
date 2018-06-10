@@ -47,7 +47,8 @@
     "preversion": "npm test",
     "test": "nyc --reporter=text --reporter=html ./node_modules/mocha/bin/mocha ./test --reporter spec",
     "postversion": "git push && git push --tags",
-    "coverage": "nyc report --reporter=text-lcov | coveralls"
+    "coverage": "nyc report --reporter=text-lcov | coveralls",
+    "test-with-coverage": "istanbul cover _mocha --report lcovonly -- -R spec && cat ./coverage/lcov.info | codacy-coverage"
   },
   "license": "MIT"
 }
