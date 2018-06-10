@@ -1,9 +1,8 @@
 {
   "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
   "name": "nforce8",
-  "description":
-    "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "2.0.2-alpha",
+  "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
+  "version": "2.0.3-alpha",
   "keywords": [
     "salesforce",
     "salesforce.com",
@@ -28,9 +27,11 @@
   "devDependencies": {
     "body-parser": "1.18.3",
     "cookie-parser": "1.4.3",
+    "coveralls": "^3.0.1",
     "express": "4.16.3",
     "express-session": "1.15.6",
     "mocha": "^5.1.1",
+    "nyc": "^12.0.2",
     "pug": "^2.0.3",
     "run-sequence": "^2.2.0",
     "should": "13.2.1"
@@ -44,8 +45,9 @@
   },
   "scripts": {
     "preversion": "npm test",
-    "test": "./node_modules/mocha/bin/mocha ./test --reporter spec",
-    "postversion": "git push && git push --tags"
+    "test": "nyc --reporter=text --reporter=html ./node_modules/mocha/bin/mocha ./test --reporter spec",
+    "postversion": "git push && git push --tags",
+    "coverage": "nyc report --reporter=text-lcov | coveralls"
   },
   "license": "MIT"
 }
