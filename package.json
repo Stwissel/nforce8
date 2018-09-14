@@ -2,7 +2,7 @@
   "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
   "name": "nforce8",
   "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "2.0.3-alpha",
+  "version": "2.0.4-alpha",
   "keywords": [
     "salesforce",
     "salesforce.com",
@@ -51,5 +51,13 @@
     "coveralls": "cat ./coverage/lcov.info | coveralls",
     "codacy": "cat ./coverage/lcov.info | codacy-coverage"
   },
+  {
+  "nyc": {
+    "exclude": [
+      "examples",
+      "docs"
+    ]
+  }
+},
   "license": "MIT"
 }
