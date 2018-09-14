@@ -49,6 +49,17 @@ function checkEnvCredentials() {
       envType: envType
     };
   }
-
+  /*
+    var x = {
+        clientId: "ADFJSD234ADF765SFG55FD54S",
+        clientSecret: "adsfkdsalfajdskfa",
+        redirectUri: "http://localhost:" + port + "/oauth/_callback",
+        loginUri: "http://localhost:" + port + "/login/uri",
+        apiVersion: opts.apiVersion || apiVersion,
+        mode: "multi",
+        autoRefresh: opts.autoRefresh || false,
+        onRefresh: opts.onRefresh || undefined
+    }
+    */
   return null;
 }
