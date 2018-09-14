@@ -52,7 +52,10 @@
     "codacy": "cat ./coverage/lcov.info | codacy-coverage"
   },
   "nyc": {
-    "exclude": ["examples", "docs"]
+    "exclude": [
+      "examples",
+      "docs"
+    ]
   },
   "license": "MIT"
 }
