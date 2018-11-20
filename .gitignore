@@ -22,6 +22,7 @@ examples/leadOut.json
 .vscode
 .sfdx
 .nyc_output
+.idea
 coverage
 
 env.sh
