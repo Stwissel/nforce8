@@ -1,61 +1,61 @@
 {
-  "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
-  "name": "nforce8",
-  "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "2.0.4-alpha",
-  "keywords": [
-    "salesforce",
-    "salesforce.com",
-    "force.com",
-    "database.com",
-    "sfdc",
-    "forcedotcom",
-    "rest",
-    "api"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git://github.com/stwissel/nforce8.git"
-  },
-  "main": "index.js",
-  "dependencies": {
-    "faye": "1.2.4",
-    "lodash": "^4.17.5",
-    "mime": "2.4.0",
-    "node-fetch": "^2.1.2"
-  },
-  "devDependencies": {
-    "body-parser": "1.18.3",
-    "codacy-coverage": "^3.0.0",
-    "cookie-parser": "1.4.3",
-    "coveralls": "^3.0.1",
-    "express": "4.16.3",
-    "express-session": "1.15.6",
-    "mocha": "^5.1.1",
-    "nyc": "^13.0.1",
-    "pug": "^2.0.3",
-    "run-sequence": "^2.2.0",
-    "should": "13.2.3"
-  },
-  "optionalDependencies": {},
-  "engines": {
-    "node": ">8.0"
-  },
-  "bugs": {
-    "url": "http://github.com/stwissel/nforce8/issues"
-  },
-  "scripts": {
-    "preversion": "npm test",
-    "test": "nyc --reporter=text --reporter=html --reporter=text-lcov --reporter=lcovonly ./node_modules/mocha/bin/mocha ./test --reporter spec",
-    "postversion": "git push && git push --tags",
-    "coveralls": "cat ./coverage/lcov.info | coveralls",
-    "codacy": "cat ./coverage/lcov.info | codacy-coverage"
-  },
-  "nyc": {
-    "exclude": [
-      "examples",
-      "docs"
-    ]
-  },
-  "license": "MIT"
+    "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
+    "name": "nforce8",
+    "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
+    "version": "2.0.5",
+    "keywords": [
+        "salesforce",
+        "salesforce.com",
+        "force.com",
+        "database.com",
+        "sfdc",
+        "forcedotcom",
+        "rest",
+        "api"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/stwissel/nforce8.git"
+    },
+    "main": "index.js",
+    "dependencies": {
+        "faye": "1.2.4",
+        "lodash": "^4.17.11",
+        "mime": "2.4.0",
+        "node-fetch": "^2.3.0"
+    },
+    "devDependencies": {
+        "body-parser": "1.18.3",
+        "codacy-coverage": "^3.4.0",
+        "cookie-parser": "1.4.3",
+        "coveralls": "^3.0.2",
+        "express": "4.16.4",
+        "express-session": "1.15.6",
+        "mocha": "^5.2.0",
+        "nyc": "^13.1.0",
+        "pug": "^2.0.3",
+        "run-sequence": "^2.2.1",
+        "should": "13.2.3"
+    },
+    "optionalDependencies": {},
+    "engines": {
+        "node": ">8.0"
+    },
+    "bugs": {
+        "url": "http://github.com/stwissel/nforce8/issues"
+    },
+    "scripts": {
+        "preversion": "npm test",
+        "test": "nyc --reporter=text --reporter=html --reporter=text-lcov --reporter=lcovonly ./node_modules/mocha/bin/mocha ./test --reporter spec",
+        "postversion": "git push && git push --tags",
+        "coveralls": "cat ./coverage/lcov.info | coveralls",
+        "codacy": "cat ./coverage/lcov.info | codacy-coverage"
+    },
+    "nyc": {
+        "exclude": [
+            "examples",
+            "docs"
+        ]
+    },
+    "license": "MIT"
 }

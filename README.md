@@ -26,10 +26,126 @@ Evolving documentation on [github.io](https://stwissel.github.io/nforce8)
 
 ## Important differences
 
-- Version numbers, if provided, **must** be full qualified strings like `v42.0`, short numbers or string are no longer accepted. These will fail <strike>42 42.0 '42'</strike>
+- Version numbers, if provided, **must** be full qualified strings like `v42.0`, short numbers or string are no longer accepted. These will fail ~42 42.0 '42'~
 - nforce8 only works with promises, no callback support
 - Subscriptions to events need the full path, option of type gets ignored
 
 ## Change Log
 
 Overview documentation on [changes between versions](https://stwissel.github.io/nforce8/Changelog.html)
+
+## Features
+
+- Promised based API
+- Intelligent sObjects (inherited from [nforce](https://www.npmjs.com/package/nforce))
+- Streaming support using [Faye](https://www.npmjs.com/package/faye) for any Salesforce topic including Change Data Capture
+- Authentication helper methods (OAuth)
+- Multi-user design with single user mode (inherited from [nforce](https://www.npmjs.com/package/nforce))
+
+## Installation
+
+```bash
+npm install nforce8
+```
+
+## Usage
+
+### Create a client connection
+
+```js
+const nforce = require('nforce8');
+
+const org = nforce8.createConnection({
+  clientId: 'CLIENT_ID_OAUTH',
+  clientSecret: 'CLIENT_SECRET_OAUTH',
+  redirectUri: 'https://yourapp.herokuapp.com/oauth/_callback', // could be http://localhost:3000/ instead
+  apiVersion: 'v45.0',  // optional, defaults to current salesforce API version
+  environment: 'production',  // optional, salesforce 'sandbox' or 'production', production default
+  mode: 'multi' // optional, 'single' or 'multi' user mode, multi default
+});
+```
+
+### Authenticate using OAuth
+
+```js
+// Multi-User
+let oauth;
+const creds = {username: 'john.doe@noreply.com', password: 'secretjohn'};
+org.authenticate(creds)
+   .then(result => oauth = result;)
+   .catch(/* handle failure here */);
+
+// Single user mode
+const creds = {username: 'john.doe@noreply.com', password: 'secretjohn'};
+org.authenticate(creds)
+   .then(result => console.log(org.oauth.access_token);)
+   .catch(/* handle failure here */);
+
+
+### Use the object factory to create records
+
+Sample based on original nforce. In single user mode the oauth argument can be omitted since it is cached in the connection object
+
+```js
+
+const acc = nforce.createSObject('Account');
+acc.set('Name', 'ACME Corporation');
+acc.set('Phone', '800-555-2345');
+acc.set('SLA__c', 'Platinum');
+
+const payload = { sobject: acc, oauth: oauth };
+
+org.insert(payload)
+.then(result => console.log(JSON.stringify(result)))
+.catch(err => console.log(err));
+
+```
+
+### Query and update
+
+Querying and updating records is super easy. **nforce** wraps API-queried records in a special object. The object caches field updates that you make to the record and allows you to pass the record directly into the update method without having to scrub out the unchanged fields. In the example below, only the Name and Industry fields will be sent in the update call despite the fact that the query returned other fields such as BillingCity and CreatedDate.
+
+```js
+
+const q = { query :'SELECT Id, Name, CreatedDate, BillingCity FROM Account WHERE Name = "ACME Corporation" LIMIT 1'};
+
+org.query(q)
+   .then(resp => {
+       if (resp.records) {
+           const acc = resp.records[0];
+           acc.set('Name','ACME Coyote');
+           acc.set('Industry','Explosives');
+           const payload = {sobject: acc, oauth: oauth};
+           org.update(payload)
+            .then(result => console.log('It worked'));
+       }
+   })
+   .catch(err => console.log(err));
+
+```
+
+### Streaming API Support
+
+You need to specify the full topic starting with a slash
+
+```js
+
+const creds = {username: 'john.doe@noreply.com', password: 'secretjohn'};
+
+org.authenticate(creds)
+    .then(oauth => {
+        const client = org.createStreamClient();
+        const topic = {topic: '/data/ChangeEvents'};
+        const cdc = client.subscribe(topic);
+        cdc.on('error' err => {
+            console.log('subscription error');
+            console.log(err);
+            client.disconnect();
+        });
+        cdc.on('data', data => console.log(data));
+    })
+    .catch(err => console.log(err));
+
+```
+
+Read the [nforce documentation](https://www.npmjs.com/package/nforce) for more details
