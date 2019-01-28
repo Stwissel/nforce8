@@ -1,8 +1,19 @@
 {
-    "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
     "name": "nforce8",
     "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-    "version": "2.0.5",
+    "version": "2.0.6",
+    "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
+    "contributors": [
+        {
+            "name": "Stephan H. Wissel",
+            "url": "https://wissel.net",
+            "email": "stephan@wissel.net"
+        },
+        {
+            "name": "Srikanth Ramakrishnan",
+            "email": "srikanth.r@salesforce.com"
+        }
+    ],
     "keywords": [
         "salesforce",
         "salesforce.com",

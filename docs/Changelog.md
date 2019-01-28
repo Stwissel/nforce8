@@ -7,11 +7,22 @@
 [![Greenkeeper badge](https://badges.greenkeeper.io/Stwissel/nforce8.svg)](https://greenkeeper.io/)
 [![Coverage Status](https://coveralls.io/repos/github/Stwissel/nforce8/badge.svg?branch=master)](https://coveralls.io/github/Stwissel/nforce8?branch=master)
 
+## Changes
+
 Documenting the main changes in reverse chronological order by version
 
-## 3.0.0
+### 2.0.6
 
-The big rewrite (WIP): Transition to TypeScript
+- add support for replayId in stream subscription
+
+### 2.0.5
+
+- added back minimal documentation in readme
+- update package dependencies to latest versions
+
+### 2.0.4
+
+- Example code converted to use promises only
 
 ## 2.0.3
 
