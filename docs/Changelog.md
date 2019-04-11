@@ -11,6 +11,10 @@
 
 Documenting the main changes in reverse chronological order by version
 
+### 2.0.8
+
+- Merged manually changes from jthurst01
+
 ### 2.0.6
 
 - add support for replayId in stream subscription

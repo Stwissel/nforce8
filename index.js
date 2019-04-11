@@ -1,15 +1,15 @@
-"use strict";
+'use strict';
 
-const fetch = require("node-fetch");
-const qs = require("querystring");
-const _ = require("lodash");
-const Record = require("./lib/record");
-const FDCStream = require("./lib/fdcstream");
-const util = require("./lib/util");
-const errors = require("./lib/errors");
-const multipart = require("./lib/multipart");
-const optionHelper = require("./lib/optionhelper")();
-const CONST = require("./lib/constants");
+const fetch = require('node-fetch');
+const qs = require('querystring');
+const _ = require('lodash');
+const Record = require('./lib/record');
+const FDCStream = require('./lib/fdcstream');
+const util = require('./lib/util');
+const errors = require('./lib/errors');
+const multipart = require('./lib/multipart');
+const optionHelper = require('./lib/optionhelper')();
+const CONST = require('./lib/constants');
 
 /*****************************
  * constants
@@ -34,43 +34,26 @@ const Connection = function(opts) {
   self = _.assign(this, opts);
 
   // validate options
-  if (!_.isString(this.clientId))
-    throw new Error("invalid or missing clientId");
-  if (!_.isString(this.redirectUri))
-    throw new Error("invalid or missing redirectUri");
-  if (!_.isString(this.authEndpoint))
-    throw new Error("invalid or missing authEndpoint");
-  if (!_.isString(this.testAuthEndpoint))
-    throw new Error("invalid or missing testAuthEndpoint");
-  if (!_.isString(this.loginUri))
-    throw new Error("invalid or missing loginUri");
-  if (!_.isString(this.testLoginUri))
-    throw new Error("invalid or missing testLoginUri");
-  if (!_.isBoolean(this.gzip)) throw new Error("gzip must be a boolean");
-  if (
-    !_.isString(this.environment) ||
-    _.indexOf(CONST.ENVS, this.environment) === -1
-  ) {
-    throw new Error(
-      "invalid environment, only " + CONST.ENVS.join(" and ") + " are allowed"
-    );
+  if (!_.isString(this.clientId)) throw new Error('invalid or missing clientId');
+  if (!_.isString(this.redirectUri)) throw new Error('invalid or missing redirectUri');
+  if (!_.isString(this.authEndpoint)) throw new Error('invalid or missing authEndpoint');
+  if (!_.isString(this.testAuthEndpoint)) throw new Error('invalid or missing testAuthEndpoint');
+  if (!_.isString(this.loginUri)) throw new Error('invalid or missing loginUri');
+  if (!_.isString(this.testLoginUri)) throw new Error('invalid or missing testLoginUri');
+  if (!_.isBoolean(this.gzip)) throw new Error('gzip must be a boolean');
+  if (!_.isString(this.environment) || _.indexOf(CONST.ENVS, this.environment) === -1) {
+    throw new Error('invalid environment, only ' + CONST.ENVS.join(' and ') + ' are allowed');
   }
   if (!_.isString(this.mode) || _.indexOf(CONST.MODES, this.mode) === -1) {
-    throw new Error(
-      "invalid mode, only " + CONST.MODES.join(" and ") + " are allowed"
-    );
+    throw new Error('invalid mode, only ' + CONST.MODES.join(' and ') + ' are allowed');
   }
-  if (this.onRefresh && !_.isFunction(this.onRefresh))
-    throw new Error("onRefresh must be a function");
-  if (this.timeout && !_.isNumber(this.timeout))
-    throw new Error("timeout must be a number");
+  if (this.onRefresh && !_.isFunction(this.onRefresh)) throw new Error('onRefresh must be a function');
+  if (this.timeout && !_.isNumber(this.timeout)) throw new Error('timeout must be a number');
 
   // Validate API version format
   const apiRegEx = /v[0-9][0-9]\.0/i;
   if (this.apiVersion && !this.apiVersion.match(apiRegEx)) {
-    throw new Error(
-      "invalid apiVersion [" + this.apiVersion + "] number, use v99.0 format"
-    );
+    throw new Error('invalid apiVersion [' + this.apiVersion + '] number, use v99.0 format');
   }
 
   // parse timeout into integer in case it's a floating point.
@@ -79,7 +62,7 @@ const Connection = function(opts) {
   // load plugins
   if (opts.plugins && _.isArray(opts.plugins)) {
     opts.plugins.forEach(function(pname) {
-      if (!plugins[pname]) throw new Error("plugin " + pname + " not found");
+      if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
       // clone the object
       self[pname] = _.clone(plugins[pname]._fns);
 
@@ -155,7 +138,7 @@ Connection.prototype._getOpts = function(d, c, opts) {
 
   data.callback = cb;
 
-  if (this.mode === "single" && !data.oauth) {
+  if (this.mode === 'single' && !data.oauth) {
     data.oauth = this.oauth;
   }
 
@@ -175,7 +158,7 @@ Connection.prototype.getAuthUri = function(opts) {
   const self = this;
 
   var urlOpts = {
-    response_type: opts.responseType || "code",
+    response_type: opts.responseType || 'code',
     client_id: self.clientId,
     redirect_uri: self.redirectUri
   };
@@ -190,7 +173,7 @@ Connection.prototype.getAuthUri = function(opts) {
 
   if (opts.scope) {
     if (_.isArray(opts.scope)) {
-      urlOpts.scope = opts.scope.join(" ");
+      urlOpts.scope = opts.scope.join(' ');
     } else {
       urlOpts.scope = opts.scope;
     }
@@ -206,7 +189,7 @@ Connection.prototype.getAuthUri = function(opts) {
 
   if (opts.prompt) {
     if (_.isArray(opts.prompt)) {
-      urlOpts.prompt = opts.prompt.join(" ");
+      urlOpts.prompt = opts.prompt.join(' ');
     } else {
       urlOpts.prompt = opts.prompt;
     }
@@ -224,13 +207,13 @@ Connection.prototype.getAuthUri = function(opts) {
 
   if (opts.authEndpoint) {
     endpoint = opts.authEndpoint;
-  } else if (self.environment == "sandbox") {
+  } else if (self.environment == 'sandbox') {
     endpoint = this.testAuthEndpoint;
   } else {
     endpoint = this.authEndpoint;
   }
 
-  return endpoint + "?" + qs.stringify(urlOpts);
+  return endpoint + '?' + qs.stringify(urlOpts);
 };
 
 Connection.prototype.authenticate = function(data) {
@@ -240,10 +223,10 @@ Connection.prototype.authenticate = function(data) {
     oauth: {}
   });
 
-  opts.uri = self.environment == "sandbox" ? this.testLoginUri : this.loginUri;
-  opts.method = "POST";
+  opts.uri = self.environment == 'sandbox' ? this.testLoginUri : this.loginUri;
+  opts.method = 'POST';
   opts.headers = {
-    "Content-Type": "application/x-www-form-urlencoded"
+    'Content-Type': 'application/x-www-form-urlencoded'
   };
 
   var bopts = {
@@ -253,21 +236,21 @@ Connection.prototype.authenticate = function(data) {
 
   //TODO: Add JWT authentication
   if (opts.code) {
-    bopts.grant_type = "authorization_code";
+    bopts.grant_type = 'authorization_code';
     bopts.code = opts.code;
     bopts.redirect_uri = self.redirectUri;
   } else if (opts.assertion) {
-    bopts.grant_type = "assertion";
-    bopts.assertion_type = "urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser";
+    bopts.grant_type = 'assertion';
+    bopts.assertion_type = 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';
     bopts.assertion = opts.assertion;
   } else if (opts.username || this.username) {
-    bopts.grant_type = "password";
+    bopts.grant_type = 'password';
     bopts.username = opts.username || this.getUsername();
     bopts.password = opts.password || this.getPassword();
     if (opts.securityToken || this.getSecurityToken()) {
       bopts.password += opts.securityToken || this.getSecurityToken();
     }
-    if (this.mode === "single") {
+    if (this.mode === 'single') {
       this.setUsername(bopts.username);
       this.setPassword(bopts.password);
       this.setSecurityToken(bopts.securityToken);
@@ -279,7 +262,7 @@ Connection.prototype.authenticate = function(data) {
   const result = new Promise((resolve, reject) => {
     try {
       this._apiAuthRequest(opts)
-        .then(res => {
+        .then((res) => {
           var old = _.clone(opts.oauth);
           _.assign(opts.oauth, res);
           if (opts.assertion) {
@@ -297,7 +280,7 @@ Connection.prototype.authenticate = function(data) {
             resolve(opts.oauth);
           }
         })
-        .catch(err => reject(err));
+        .catch((err) => reject(err));
     } catch (e) {
       reject(e);
     }
@@ -314,8 +297,8 @@ Connection.prototype.refreshToken = function(data) {
     }
   });
 
-  opts.uri = this.environment == "sandbox" ? this.testLoginUri : this.loginUri;
-  opts.method = "POST";
+  opts.uri = this.environment == 'sandbox' ? this.testLoginUri : this.loginUri;
+  opts.method = 'POST';
 
   const refreshOpts = {
     client_id: this.clientId,
@@ -324,12 +307,11 @@ Connection.prototype.refreshToken = function(data) {
 
   // support for SAML-based token refreshes
   if (!opts.oauth.refresh_token && (opts.oauth.assertion || opts.assertion)) {
-    refreshOpts.grant_type = "assertion";
-    refreshOpts.assertion_type =
-      "urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser";
+    refreshOpts.grant_type = 'assertion';
+    refreshOpts.assertion_type = 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';
     refreshOpts.assertion = opts.assertion || opts.oauth.assertion;
   } else {
-    refreshOpts.grant_type = "refresh_token";
+    refreshOpts.grant_type = 'refresh_token';
     refreshOpts.refresh_token = opts.oauth.refresh_token;
   }
 
@@ -340,12 +322,12 @@ Connection.prototype.refreshToken = function(data) {
 
   opts.body = qs.stringify(refreshOpts);
   opts.headers = {
-    "Content-Type": "application/x-www-form-urlencoded"
+    'Content-Type': 'application/x-www-form-urlencoded'
   };
 
   const result = new Promise((resolve, reject) => {
     this._apiAuthRequest(opts)
-      .then(res => {
+      .then((res) => {
         var old = _.clone(opts.oauth);
         _.assign(opts.oauth, res);
         if (opts.assertion) {
@@ -364,7 +346,7 @@ Connection.prototype.refreshToken = function(data) {
           resolve(opts.oauth);
         }
       })
-      .catch(err => reject(err));
+      .catch((err) => reject(err));
   });
 
   return result;
@@ -372,37 +354,37 @@ Connection.prototype.refreshToken = function(data) {
 
 Connection.prototype.revokeToken = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "token"
+    singleProp: 'token'
   });
 
-  if (this.environment === "sandbox") {
-    opts.uri = "https://test.salesforce.com/services/oauth2/revoke";
+  if (this.environment === 'sandbox') {
+    opts.uri = 'https://test.salesforce.com/services/oauth2/revoke';
   } else {
-    opts.uri = "https://login.salesforce.com/services/oauth2/revoke";
+    opts.uri = 'https://login.salesforce.com/services/oauth2/revoke';
   }
-  opts.uri += "?token=" + opts.token;
+  opts.uri += '?token=' + opts.token;
   if (opts.callbackParam) {
-    opts.uri += "&callback=" + opts.callbackParam;
+    opts.uri += '&callback=' + opts.callbackParam;
   }
   return this._apiAuthRequest(opts);
 };
 
 Connection.prototype.getPasswordStatus = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "id"
+    singleProp: 'id'
   });
 
   var id = opts.sobject ? opts.sobject.getId() : opts.id;
-  opts.resource = "/sobjects/user/" + id + "/password";
-  opts.method = "GET";
+  opts.resource = '/sobjects/user/' + id + '/password';
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
 Connection.prototype.updatePassword = function(data) {
   var opts = this._getOpts(data);
   var id = opts.sobject ? opts.sobject.getId() : opts.id;
-  opts.resource = "/sobjects/user/" + id + "/password";
-  opts.method = "POST";
+  opts.resource = '/sobjects/user/' + id + '/password';
+  opts.method = 'POST';
   opts.body = JSON.stringify({ newPassword: opts.newPassword });
   return this._apiRequest(opts);
 };
@@ -410,7 +392,7 @@ Connection.prototype.updatePassword = function(data) {
 Connection.prototype.getIdentity = function(data) {
   var opts = this._getOpts(data);
   opts.uri = opts.oauth.id;
-  opts.method = "GET";
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
@@ -420,50 +402,50 @@ Connection.prototype.getIdentity = function(data) {
 
 Connection.prototype.getVersions = function() {
   var opts = this._getOpts(null);
-  opts.uri = "http://na1.salesforce.com/services/data/";
-  opts.method = "GET";
+  opts.uri = 'http://na1.salesforce.com/services/data/';
+  opts.method = 'GET';
   return this._apiAuthRequest(opts);
 };
 
 Connection.prototype.getResources = function(data) {
   var opts = this._getOpts(data);
-  opts.resource = "/";
-  opts.method = "GET";
+  opts.resource = '/';
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
 Connection.prototype.getSObjects = function(data) {
   //TODO: fix me! var self = this;
   var opts = this._getOpts(data);
-  opts.resource = "/sobjects";
-  opts.method = "GET";
+  opts.resource = '/sobjects';
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
 Connection.prototype.getMetadata = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "type"
+    singleProp: 'type'
   });
-  opts.resource = "/sobjects/" + opts.type;
-  opts.method = "GET";
+  opts.resource = '/sobjects/' + opts.type;
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
 Connection.prototype.getDescribe = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "type"
+    singleProp: 'type'
   });
-  opts.resource = "/sobjects/" + opts.type + "/describe";
-  opts.method = "GET";
+  opts.resource = '/sobjects/' + opts.type + '/describe';
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
 Connection.prototype.getLimits = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "type"
+    singleProp: 'type'
   });
-  opts.resource = "/limits";
-  opts.method = "GET";
+  opts.resource = '/limits';
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
@@ -474,13 +456,9 @@ Connection.prototype.getLimits = function(data) {
 Connection.prototype.insert = function(data) {
   var opts = this._getOpts(data);
   var type = opts.sobject.getType();
-  opts.resource = "/sobjects/" + type;
-  opts.method = "POST";
-  if (
-    type === "document" ||
-    type === "attachment" ||
-    type === "contentversion"
-  ) {
+  opts.resource = '/sobjects/' + type;
+  opts.method = 'POST';
+  if (type === 'document' || type === 'attachment' || type === 'contentversion') {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(false));
@@ -492,13 +470,9 @@ Connection.prototype.update = function(data) {
   var opts = this._getOpts(data);
   var type = opts.sobject.getType();
   var id = opts.sobject.getId();
-  opts.resource = "/sobjects/" + type + "/" + id;
-  opts.method = "PATCH";
-  if (
-    type === "document" ||
-    type === "attachment" ||
-    type === "contentversion"
-  ) {
+  opts.resource = '/sobjects/' + type + '/' + id;
+  opts.method = 'PATCH';
+  if (type === 'document' || type === 'attachment' || type === 'contentversion') {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(true));
@@ -511,8 +485,8 @@ Connection.prototype.upsert = function(data) {
   var type = opts.sobject.getType();
   var extIdField = opts.sobject.getExternalIdField();
   var extId = opts.sobject.getExternalId();
-  opts.resource = "/sobjects/" + type + "/" + extIdField + "/" + extId;
-  opts.method = "PATCH";
+  opts.resource = '/sobjects/' + type + '/' + extIdField + '/' + extId;
+  opts.method = 'PATCH';
   opts.body = JSON.stringify(opts.sobject._getPayload(false));
   return this._apiRequest(opts);
 };
@@ -521,8 +495,8 @@ Connection.prototype.delete = function(data) {
   var opts = this._getOpts(data);
   var type = opts.sobject.getType();
   var id = opts.sobject.getId();
-  opts.resource = "/sobjects/" + type + "/" + id;
-  opts.method = "DELETE";
+  opts.resource = '/sobjects/' + type + '/' + id;
+  opts.method = 'DELETE';
   return this._apiRequest(opts);
 };
 
@@ -531,26 +505,26 @@ Connection.prototype.getRecord = function(data) {
   const type = opts.sobject ? opts.sobject.getType() : opts.type;
   const id = opts.sobject ? opts.sobject.getId() : opts.id;
 
-  opts.resource = "/sobjects/" + type + "/" + id;
-  opts.method = "GET";
+  opts.resource = '/sobjects/' + type + '/' + id;
+  opts.method = 'GET';
 
   if (opts.fields) {
     if (_.isString(opts.fields)) {
       opts.fields = [opts.fields];
     }
-    opts.resource += "?" + qs.stringify({ fields: opts.fields.join() });
+    opts.resource += '?' + qs.stringify({ fields: opts.fields.join() });
   }
 
   const result = new Promise((resolve, reject) => {
     this._apiRequest(opts)
-      .then(resp => {
+      .then((resp) => {
         if (!opts.raw) {
           resp = new Record(resp);
           resp._reset();
         }
         resolve(resp);
       })
-      .catch(err => reject(err));
+      .catch((err) => reject(err));
   });
 
   return result;
@@ -562,27 +536,24 @@ Connection.prototype.getRecord = function(data) {
 
 Connection.prototype.getBody = function(data) {
   const opts = this._getOpts(data);
-  const type = (opts.sobject
-    ? opts.sobject.getType()
-    : opts.type
-  ).toLowerCase();
+  const type = (opts.sobject ? opts.sobject.getType() : opts.type).toLowerCase();
 
-  if (type === "document") {
+  if (type === 'document') {
     return this.getDocumentBody(opts);
-  } else if (type === "attachment") {
+  } else if (type === 'attachment') {
     return this.getAttachmentBody(opts);
-  } else if (type === "contentversion") {
+  } else if (type === 'contentversion') {
     return this.getContentVersionData(opts);
   } else {
-    return Promise.reject(new Error("invalid type: " + type));
+    return Promise.reject(new Error('invalid type: ' + type));
   }
 };
 
 Connection.prototype.getAttachmentBody = function(data) {
   var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = "/sobjects/attachment/" + id + "/body";
-  opts.method = "GET";
+  opts.resource = '/sobjects/attachment/' + id + '/body';
+  opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
 };
@@ -590,8 +561,8 @@ Connection.prototype.getAttachmentBody = function(data) {
 Connection.prototype.getDocumentBody = function(data) {
   var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = "/sobjects/document/" + id + "/body";
-  opts.method = "GET";
+  opts.resource = '/sobjects/document/' + id + '/body';
+  opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
 };
@@ -599,8 +570,8 @@ Connection.prototype.getDocumentBody = function(data) {
 Connection.prototype.getContentVersionBody = function(data) {
   var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = "/sobjects/contentversion/" + id + "/body";
-  opts.method = "GET";
+  opts.resource = '/sobjects/contentversion/' + id + '/body';
+  opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
 };
@@ -608,8 +579,8 @@ Connection.prototype.getContentVersionBody = function(data) {
 Connection.prototype.getContentVersionData = function(data) {
   var opts = this._getOpts(data);
   var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = "/sobjects/contentversion/" + id + "/versiondata";
-  opts.method = "GET";
+  opts.resource = '/sobjects/contentversion/' + id + '/versiondata';
+  opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
 };
@@ -620,7 +591,7 @@ Connection.prototype.getContentVersionData = function(data) {
 
 Connection.prototype.query = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "query",
+    singleProp: 'query',
     defaults: {
       fetchAll: false,
       includeDeleted: false,
@@ -632,7 +603,7 @@ Connection.prototype.query = function(data) {
 
 Connection.prototype.queryAll = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "query",
+    singleProp: 'query',
     defaults: {
       fetchAll: false,
       raw: false
@@ -647,11 +618,11 @@ Connection.prototype._queryHandler = function(data) {
   const recs = [];
   const opts = this._getOpts(data);
 
-  opts.method = "GET";
-  opts.resource = "/query";
+  opts.method = 'GET';
+  opts.resource = '/query';
 
   if (opts.includeDeleted) {
-    opts.resource += "All";
+    opts.resource += 'All';
   }
 
   opts.qs = {
@@ -676,8 +647,8 @@ Connection.prototype._queryHandler = function(data) {
       if (opts.fetchAll && resp.nextRecordsUrl) {
         self
           .getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
-          .then(res2 => handleResponse(res2))
-          .catch(err => reject(err));
+          .then((res2) => handleResponse(res2))
+          .catch((err) => reject(err));
       } else {
         resp.records = recs;
         return resolve(resp);
@@ -685,8 +656,8 @@ Connection.prototype._queryHandler = function(data) {
     }
 
     this._apiRequest(opts)
-      .then(resp => handleResponse(resp))
-      .catch(err => reject(err));
+      .then((resp) => handleResponse(resp))
+      .catch((err) => reject(err));
   });
 
   return result;
@@ -698,19 +669,19 @@ Connection.prototype._queryHandler = function(data) {
 
 Connection.prototype.search = function(data) {
   const opts = this._getOpts(data, null, {
-    singleProp: "search",
+    singleProp: 'search',
     defaults: {
       raw: false
     }
   });
 
-  opts.resource = "/search";
-  opts.method = "GET";
+  opts.resource = '/search';
+  opts.method = 'GET';
   opts.qs = { q: opts.search };
 
   const result = new Promise((resolve, reject) => {
     this._apiRequest(opts)
-      .then(resp => {
+      .then((resp) => {
         if (opts.raw || !resp.length) {
           resolve(resp);
         } else {
@@ -721,35 +692,35 @@ Connection.prototype.search = function(data) {
           resolve(resp);
         }
       })
-      .catch(err => reject(err));
+      .catch((err) => reject(err));
   });
 
   return result;
 };
 
 function requireForwardSlash(uri) {
-  if (!uri) return "/";
-  if (uri.charAt(0) !== "/") {
-    return "/" + uri;
+  if (!uri) return '/';
+  if (uri.charAt(0) !== '/') {
+    return '/' + uri;
   }
   return uri;
 }
 
 Connection.prototype.getUrl = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "url"
+    singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-  opts.method = "GET";
+  opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
 Connection.prototype.putUrl = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "url"
+    singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-  opts.method = "PUT";
+  opts.method = 'PUT';
   if (opts.body) {
     opts.body = JSON.stringify(opts.body);
   }
@@ -758,10 +729,10 @@ Connection.prototype.putUrl = function(data) {
 
 Connection.prototype.postUrl = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "url"
+    singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-  opts.method = "POST";
+  opts.method = 'POST';
   if (opts.body) {
     opts.body = JSON.stringify(opts.body);
   }
@@ -770,10 +741,10 @@ Connection.prototype.postUrl = function(data) {
 
 Connection.prototype.deleteUrl = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "url"
+    singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-  opts.method = "DELETE";
+  opts.method = 'DELETE';
   return this._apiRequest(opts);
 };
 
@@ -783,14 +754,14 @@ Connection.prototype.deleteUrl = function(data) {
 
 Connection.prototype.apexRest = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "uri"
+    singleProp: 'uri'
   });
   // Allow for data.uri to start with or without a /
   opts.uri =
     opts.oauth.instance_url +
-    "/services/apexrest/" +
-    (data.uri.substring(0, 1) === "/" ? data.uri.substring(1) : data.uri);
-  opts.method = opts.method || "GET";
+    '/services/apexrest/' +
+    (data.uri.substring(0, 1) === '/' ? data.uri.substring(1) : data.uri);
+  opts.method = opts.method || 'GET';
   if (opts.urlParams) {
     opts.qs = opts.urlParams;
   }
@@ -815,9 +786,8 @@ Connection.prototype.createStreamClient = function(data) {
 
 Connection.prototype.subscribe = function(data) {
   var opts = this._getOpts(data, null, {
-    singleProp: "topic",
+    singleProp: 'topic',
     defaults: {
-      isSystem: false,
       timeout: null,
       retry: null
     }
@@ -856,14 +826,14 @@ Connection.prototype.autoRefreshToken = function(data) {
     if (opts.oauth.refresh_token) {
       Connection.prototype.refreshToken
         .call(self, refreshOpts)
-        .then(res => resolve(res))
-        .catch(err => reject(err));
+        .then((res) => resolve(res))
+        .catch((err) => reject(err));
       // auto-refresh: un/pw
     } else {
       Connection.prototype.authenticate
         .call(self, refreshOpts)
-        .then(res => resolve(res))
-        .catch(err => reject(err));
+        .then((res) => resolve(res))
+        .catch((err) => reject(err));
     }
   });
 
@@ -892,24 +862,24 @@ Connection.prototype._apiAuthRequest = function(opts) {
   const result = new Promise((resolve, reject) => {
     try {
       fetch(uri, opts)
-        .then(res => {
+        .then((res) => {
           if (!res) {
             throw errors.emptyResponse();
           } else if (!res.ok) {
-            const err = new Error("Fetch failed:" + res.statusText);
+            const err = new Error('Fetch failed:' + res.statusText);
             err.statusCode = res.status;
             throw err;
           }
           return res;
         })
-        .then(res => res.json())
-        .then(jBody => {
-          if (jBody.access_token && self.mode === "single") {
+        .then((res) => res.json())
+        .then((jBody) => {
+          if (jBody.access_token && self.mode === 'single') {
             self.oauth = jBody;
           }
           resolve(jBody);
         })
-        .catch(err => reject(err));
+        .catch((err) => reject(err));
     } catch (e) {
       reject(e);
     }
@@ -938,12 +908,12 @@ Connection.prototype._apiRequest = function(opts) {
   const result = new Promise((resolve, reject) => {
     try {
       fetch(uri, ropts)
-        .then(res => responseFailureCheck(res))
-        .then(res => unsucessfullResponseCheck(res, self, ropts))
-        .then(res => (util.isJsonResponse(res) ? res.json() : res.text()))
-        .then(body => addSObjectAndId(body, sobject))
-        .then(body => resolve(body))
-        .catch(err => reject(err));
+        .then((res) => responseFailureCheck(res))
+        .then((res) => unsucessfullResponseCheck(res, self, ropts))
+        .then((res) => (util.isJsonResponse(res) ? res.json() : res.text()))
+        .then((body) => addSObjectAndId(body, sobject))
+        .then((body) => resolve(body))
+        .catch((err) => reject(err));
     } catch (e) {
       reject(e);
     }
@@ -965,9 +935,7 @@ function responseFailureCheck(res) {
     err.statusCode = res.status;
     throw err;
   } else if (!res.body) {
-    const err = new Error(
-      "Salesforce returned no body and status code " + res.status
-    );
+    const err = new Error('Salesforce returned no body and status code ' + res.status);
     err.statusCode = res.status;
     throw err;
   }
@@ -977,7 +945,7 @@ function responseFailureCheck(res) {
 
 /*
  * Process the positive response from an API call
-*/
+ */
 function addSObjectAndId(body, sobject) {
   // attach the id back to the sobject on insert
   if (sobject) {
@@ -1014,15 +982,14 @@ function unsucessfullResponseCheck(res, self, opts) {
     e.body = body;
   } else {
     // Something went totally wrong
-    e.message = "Salesforce returned an unrecognized error " + res.status;
+    e.message = 'Salesforce returned an unrecognized error ' + res.status;
     e.body = body;
   }
 
   // confirm auto-refresh support
   if (
     e.errorCode &&
-    (e.errorCode === "INVALID_SESSION_ID" ||
-      e.errorCode === "Bad_OAuth_Token") &&
+    (e.errorCode === 'INVALID_SESSION_ID' || e.errorCode === 'Bad_OAuth_Token') &&
     self.autoRefresh === true &&
     (opts.oauth.refresh_token || (self.getUsername() && self.getPassword())) &&
     !opts._retryCount
@@ -1030,12 +997,12 @@ function unsucessfullResponseCheck(res, self, opts) {
     // attempt the autorefresh
     Connection.prototype.autoRefreshToken
       .call(self, opts)
-      .then(res => {
+      .then((res) => {
         opts._refreshResult = res;
         opts._retryCount = 1;
         return Connection.prototype._apiRequest.call(self, opts);
       })
-      .catch(err2 => {
+      .catch((err2) => {
         throw err2;
       });
   } else {
@@ -1056,11 +1023,11 @@ function Plugin(opts) {
 }
 
 Plugin.prototype.fn = function(fnName, fn) {
-  if (typeof fn !== "function") {
-    throw new Error("invalid function provided");
+  if (typeof fn !== 'function') {
+    throw new Error('invalid function provided');
   }
-  if (typeof fnName !== "string") {
-    throw new Error("invalid function name provided");
+  if (typeof fnName !== 'string') {
+    throw new Error('invalid function name provided');
   }
   this._fns[fnName] = fn;
 
@@ -1072,19 +1039,17 @@ Plugin.prototype.fn = function(fnName, fn) {
  *****************************/
 
 const plugin = function(opts) {
-  if (typeof opts === "string") {
+  if (typeof opts === 'string') {
     opts = { namespace: opts };
   }
   if (!opts || !opts.namespace) {
-    throw new Error("no namespace provided for plugin");
+    throw new Error('no namespace provided for plugin');
   }
   opts = _.defaults(opts, {
     override: false
   });
   if (plugins[opts.namespace] && opts.override !== true) {
-    throw new Error(
-      "a plugin with namespace " + opts.namespace + " already exists"
-    );
+    throw new Error('a plugin with namespace ' + opts.namespace + ' already exists');
   }
   plugins[opts.namespace] = new Plugin(opts);
   return plugins[opts.namespace];
@@ -1105,7 +1070,7 @@ const createSObject = function(type, fields) {
 };
 
 // Reading JSON doesn't work with import
-const version = require("./package.json").version;
+const version = require('./package.json').version;
 
 module.exports = {
   util: util,
