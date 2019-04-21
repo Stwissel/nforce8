@@ -864,11 +864,11 @@ Connection.prototype._apiAuthRequest = function(opts) {
       fetch(uri, opts)
         .then((res) => {
           if (!res) {
-            throw errors.emptyResponse();
+            reject(errors.emptyResponse());
           } else if (!res.ok) {
             const err = new Error('Fetch failed:' + res.statusText);
             err.statusCode = res.status;
-            throw err;
+            reject(err);
           }
           return res;
         })
