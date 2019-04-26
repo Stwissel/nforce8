@@ -36,7 +36,7 @@
     "node-fetch": "^2.3.0"
   },
   "devDependencies": {
-    "body-parser": "1.18.3",
+    "body-parser": "1.19.0",
     "codacy-coverage": "^3.4.0",
     "cookie-parser": "1.4.4",
     "coveralls": "^3.0.3",
