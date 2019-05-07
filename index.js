@@ -1071,12 +1071,13 @@ const createSObject = function(type, fields) {
 
 // Reading JSON doesn't work with import
 const version = require('./package.json').version;
-
+const API_VERSION = require('./package.json').sfdx.api;
 module.exports = {
   util: util,
   plugin: plugin,
   Record: Record,
   version: version,
+  API_VERSION: API_VERSION,
   createConnection: createConnection,
   createSObject: createSObject
 };
