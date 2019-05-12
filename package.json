@@ -1,7 +1,7 @@
 {
   "name": "nforce8",
   "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
   "contributors": [
     {
@@ -34,18 +34,19 @@
   "main": "index.js",
   "dependencies": {
     "faye": "1.2.4",
+    "lodash": "^4.17.11",
     "mime": "2.4.2",
-    "node-fetch": "^2.3.0"
+    "node-fetch": "^2.5.0"
   },
   "devDependencies": {
-    "body-parser": "1.18.3",
+    "body-parser": "1.19.0",
     "codacy-coverage": "^3.4.0",
     "cookie-parser": "1.4.4",
     "coveralls": "^3.0.3",
     "express": "4.16.4",
-    "express-session": "1.16.0",
-    "mocha": "^6.1.2",
-    "nyc": "^13.3.0",
+    "express-session": "1.16.1",
+    "mocha": "^6.1.4",
+    "nyc": "^14.1.1",
     "pug": "^2.0.3",
     "run-sequence": "^2.2.1",
     "should": "13.2.3"

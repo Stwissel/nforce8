@@ -25,29 +25,29 @@ const plugins = {};
 const Connection = function(opts) {
   var self = this;
 
-  opts = _.defaults(opts || {}, CONST.defaultOptions);
+  opts = Object.assign(CONST.defaultOptions, opts);
 
   // convert option values
   opts.environment = opts.environment.toLowerCase();
   opts.mode = opts.mode.toLowerCase();
 
-  self = _.assign(this, opts);
+  self = Object.assign(this, opts);
 
   // validate options
-  if (!_.isString(this.clientId)) throw new Error('invalid or missing clientId');
-  if (!_.isString(this.redirectUri)) throw new Error('invalid or missing redirectUri');
-  if (!_.isString(this.authEndpoint)) throw new Error('invalid or missing authEndpoint');
-  if (!_.isString(this.testAuthEndpoint)) throw new Error('invalid or missing testAuthEndpoint');
-  if (!_.isString(this.loginUri)) throw new Error('invalid or missing loginUri');
-  if (!_.isString(this.testLoginUri)) throw new Error('invalid or missing testLoginUri');
-  if (!_.isBoolean(this.gzip)) throw new Error('gzip must be a boolean');
-  if (!_.isString(this.environment) || _.indexOf(CONST.ENVS, this.environment) === -1) {
+  if (!util.isString(this.clientId)) throw new Error('invalid or missing clientId');
+  if (!util.isString(this.redirectUri)) throw new Error('invalid or missing redirectUri');
+  if (!util.isString(this.authEndpoint)) throw new Error('invalid or missing authEndpoint');
+  if (!util.isString(this.testAuthEndpoint)) throw new Error('invalid or missing testAuthEndpoint');
+  if (!util.isString(this.loginUri)) throw new Error('invalid or missing loginUri');
+  if (!util.isString(this.testLoginUri)) throw new Error('invalid or missing testLoginUri');
+  if (!util.isBoolean(this.gzip)) throw new Error('gzip must be a boolean');
+  if (!util.isString(this.environment) || _.indexOf(CONST.ENVS, this.environment) === -1) {
     throw new Error('invalid environment, only ' + CONST.ENVS.join(' and ') + ' are allowed');
   }
-  if (!_.isString(this.mode) || _.indexOf(CONST.MODES, this.mode) === -1) {
+  if (!util.isString(this.mode) || _.indexOf(CONST.MODES, this.mode) === -1) {
     throw new Error('invalid mode, only ' + CONST.MODES.join(' and ') + ' are allowed');
   }
-  if (this.onRefresh && !_.isFunction(this.onRefresh)) throw new Error('onRefresh must be a function');
+  if (this.onRefresh && !util.isFunction(this.onRefresh)) throw new Error('onRefresh must be a function');
   if (this.timeout && !_.isNumber(this.timeout)) throw new Error('timeout must be a number');
 
   // Validate API version format
@@ -119,7 +119,7 @@ Connection.prototype._getOpts = function(d, c, opts) {
 
   opts = opts || {};
 
-  if (_.isFunction(d)) {
+  if (util.isFunction(d)) {
     cb = d;
     dt = null;
   } else {
@@ -200,7 +200,7 @@ Connection.prototype.getAuthUri = function(opts) {
   }
 
   if (opts.urlOpts) {
-    urlOpts = _.assign(urlOpts, opts.urlOpts);
+    urlOpts = Object.assign(urlOpts, opts.urlOpts);
   }
 
   var endpoint;
@@ -264,7 +264,7 @@ Connection.prototype.authenticate = function(data) {
       this._apiAuthRequest(opts)
         .then((res) => {
           var old = _.clone(opts.oauth);
-          _.assign(opts.oauth, res);
+          Object.assign(opts.oauth, res);
           if (opts.assertion) {
             opts.oauth.assertion = opts.assertion;
           }
@@ -329,7 +329,7 @@ Connection.prototype.refreshToken = function(data) {
     this._apiAuthRequest(opts)
       .then((res) => {
         var old = _.clone(opts.oauth);
-        _.assign(opts.oauth, res);
+        Object.assign(opts.oauth, res);
         if (opts.assertion) {
           opts.oauth.assertion = opts.assertion;
         }
@@ -509,7 +509,7 @@ Connection.prototype.getRecord = function(data) {
   opts.method = 'GET';
 
   if (opts.fields) {
-    if (_.isString(opts.fields)) {
+    if (util.isString(opts.fields)) {
       opts.fields = [opts.fields];
     }
     opts.resource += '?' + qs.stringify({ fields: opts.fields.join() });
@@ -976,7 +976,7 @@ function unsucessfullResponseCheck(res, self, opts) {
     e.errorCode = body[0].errorCode;
     e.body = body;
     // error: string body - Something really went wrong
-  } else if (_.isString(body)) {
+  } else if (util.isString(body)) {
     e.message = body;
     e.errorCode = body;
     e.body = body;
@@ -1071,13 +1071,13 @@ const createSObject = function(type, fields) {
 
 // Reading JSON doesn't work with import
 const version = require('./package.json').version;
-const API_VERSION = require('./package.json').sfdx.api;
+
 module.exports = {
   util: util,
   plugin: plugin,
   Record: Record,
   version: version,
-  API_VERSION: API_VERSION,
+  API_VERSION: CONST.defaultOptions.apiVersion,
   createConnection: createConnection,
   createSObject: createSObject
 };
