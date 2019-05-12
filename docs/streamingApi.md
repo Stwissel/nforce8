@@ -1,6 +1,6 @@
 # Streaming API support
 
-**nforce** supports the Force.com Streaming API. Connecting to one of
+**nforce8** supports the Force.com Streaming API. Connecting to one of
 your channels (PushTopics, Generic Channels, or Platform Events) is easy
 using nforce. Here's how you create a streaming client and subscribe to a
 PushTopic.
@@ -18,3 +18,7 @@ PushTopic.
 
 `replayId`: (Integer:Optional) The replayId of the last received event.
 Used for replaying events in Durable Streaming or Platform Events
+
+- -1 for new events only
+- -2 replay all events
+- a number: replay from there

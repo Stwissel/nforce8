@@ -25,7 +25,7 @@
     "api"
   ],
   "sfdx": {
-    "api": "v46.0"
+    "api": "v45.0"
   },
   "repository": {
     "type": "git",

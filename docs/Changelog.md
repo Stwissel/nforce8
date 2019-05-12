@@ -11,6 +11,10 @@
 
 Documenting the main changes in reverse chronological order by version
 
+### 2.0.9
+
+- moved default API version into package.json
+
 ### 2.0.8
 
 - Merged manually changes from jthurst01
