@@ -6,4 +6,5 @@ duplication:
  coverage:
    enabled: true
 exclude_paths:
-  - 'examples/**'
+  - examples/**
+  - docs/**
