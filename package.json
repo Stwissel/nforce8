@@ -35,7 +35,7 @@
   "dependencies": {
     "faye": "1.2.4",
     "lodash": "^4.17.11",
-    "mime": "2.4.2",
+    "mime": "2.4.3",
     "node-fetch": "^2.5.0"
   },
   "devDependencies": {
