@@ -44,7 +44,7 @@
     "cookie-parser": "1.4.4",
     "coveralls": "^3.0.3",
     "express": "4.16.4",
-    "express-session": "1.16.2",
+    "express-session": "1.17.0",
     "mocha": "^6.1.4",
     "nyc": "^14.1.1",
     "pug": "^2.0.3",
