@@ -45,7 +45,7 @@
     "coveralls": "^3.0.9",
     "express": "4.17.1",
     "express-session": "1.17.0",
-    "mocha": "^6.2.2",
+    "mocha": "^7.0.1",
     "nyc": "^15.0.0",
     "pug": "^2.0.4",
     "run-sequence": "^2.2.1",
