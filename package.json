@@ -33,10 +33,11 @@
   },
   "main": "index.js",
   "dependencies": {
-    "faye": "1.2.4",
+    "faye": "1.2.5",
     "lodash": "^4.17.15",
     "mime": "2.4.4",
-    "node-fetch": "^2.6.0"
+    "node-fetch": "^2.6.0",
+    "snyk": "^1.319.0"
   },
   "devDependencies": {
     "body-parser": "1.19.0",
@@ -63,7 +64,9 @@
     "test": "nyc --reporter=text --reporter=html --reporter=text-lcov --reporter=lcovonly ./node_modules/mocha/bin/mocha ./test --reporter spec",
     "postversion": "git push && git push --tags",
     "coveralls": "cat ./coverage/lcov.info | coveralls",
-    "codacy": "cat ./coverage/lcov.info | codacy-coverage"
+    "codacy": "cat ./coverage/lcov.info | codacy-coverage",
+    "snyk-protect": "snyk protect",
+    "prepare": "npm run snyk-protect"
   },
   "nyc": {
     "exclude": [
@@ -71,5 +74,6 @@
       "docs"
     ]
   },
-  "license": "MIT"
+  "license": "MIT",
+  "snyk": true
 }
