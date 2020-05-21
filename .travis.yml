@@ -13,7 +13,8 @@ branches:
   - /^greenkeeper/.*$/
 after_success:
   - npm run coveralls
-  - npm run codacy  
+  - npm run codacy
+  - bash <(curl -s https://codecov.io/bash)
 deploy:
   provider: npm
   email: stw@linux.com
