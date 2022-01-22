@@ -36,7 +36,7 @@
     "faye": "1.2.5",
     "lodash": "^4.17.20",
     "mime": "2.4.5",
-    "node-fetch": "^2.6.0"
+    "node-fetch": "^2.6.7"
   },
   "devDependencies": {
     "body-parser": "1.19.0",
