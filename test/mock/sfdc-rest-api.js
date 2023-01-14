@@ -1,65 +1,74 @@
+const { resolvePtr } = require('dns');
 const http = require('http');
 const CONST = require('../../lib/constants');
 const apiVersion = CONST.API;
 let port = process.env.PORT || 3000;
-let lastRequest = null;
-let nextResponse = null;
-let closeOnRequest = false;
-let isListening = false;
-let server = null;
-let sockets = [];
+let serverStack = [];
+let requestStack = [];
 
-// Listener function for http server
-const serverListener = (req, res) => {
-  lastRequest = req;
-  lastRequest.body = '';
+const reset = () => {
+  requestStack.length = 0;
+};
 
-  // Incoming data
-  const onData = (chunk) => (lastRequest.body += chunk.toString());
+const getLastRequest = () => requestStack[0];
 
-  // End of a request
-  const onEnd = () => {
-    // Close if requested
-    if (closeOnRequest) {
-      if (sockets.length) {
-        for (const socket of sockets) {
-          socket.destroy();
-        }
-      }
-      return server.close();
-    }
+// Default answer, when none provided
+const defaultResponse = {
+  code: 200,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ Status: 'OK' })
+};
 
-    // Otherwise return some results
-    if (nextResponse) {
-      res.writeHead(nextResponse.code, nextResponse.headers);
-      if (nextResponse.body) {
-        res.end(nextResponse.body, 'utf8');
-      }
-    } else {
-      res.writeHead(200, {
-        'Content-Type': 'application/json'
-      });
-      res.end('{"Status":"OK"}');
+// Clear out the server
+const clearServerStack = () => {
+  let allPromises = [];
+  let curServer = serverStack.pop();
+  while (curServer) {
+    allPromises.push(curServer.close());
+    curServer = serverStack.pop();
+  }
+  return Promise.all(allPromises);
+};
+
+// Returns a server instance with a predefinded answer
+const getServerInstance = (serverListener) => {
+  return new Promise((resolve, reject) => {
+    clearServerStack()
+      .then(() => {
+        let server = http.createServer(serverListener);
+        server.listen(port, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            serverStack.push(server);
+            resolve(server);
+          }
+        });
+      })
+      .catch(reject);
+  });
+};
+
+const getGoodServerInstance = (response = defaultResponse) => {
+  const serverListener = (req, res) => {
+    requestStack.push(req);
+    res.writeHead(response.code, response.headers);
+    if (response.body) {
+      res.end(response.body, 'utf8');
     }
   };
-
-  req.on('data', onData);
-  req.on('end', onEnd);
+  return getServerInstance(serverListener);
 };
 
-// Server functions
-const onConnection = (socket) => {
-  sockets.push(socket);
-  socket.on('close', () => sockets.splice(sockets.indexOf(socket), 1));
-};
-
-const start = function (port, cb) {
-  port = port || process.env.PORT || 3000;
-  server = http.createServer(serverListener);
-  server.on('listening', () => (isListening = true));
-  server.on('close', () => (isListening = false));
-  server.on('connection', onConnection);
-  server.listen(port, (err) => (err ? cb(err) : cb()));
+const getClosedServerInstance = () => {
+  const serverListener = (req, res) => {
+    console.log(req.url);
+    const fatError = new Error('ECONNRESET');
+    fatError.type = 'system';
+    fatError.errno = 'ECONNRESET';
+    req.destroy(fatError);
+  };
+  return getServerInstance(serverListener);
 };
 
 // return an example client
@@ -89,48 +98,25 @@ const getOAuth = function () {
   };
 };
 
-const setResponse = function (code, headers, body) {
-  nextResponse = {
-    code: code,
-    headers: headers,
-    body: body
-  };
+const start = (incomingPort, cb) => {
+  port = incomingPort;
+  getGoodServerInstance()
+    .catch(console.error)
+    .finally(() => cb());
 };
-
-// return the last cached request
-const getLastRequest = () => lastRequest;
-
-// simulate a socket close on a request
-const closeOnRequestFunc = (close) => (closeOnRequest = close);
-
-// reset the cache
-const reset = function () {
-  lastRequest = null;
-  nextResponse = null;
-  closeOnRequest = false;
-  sockets = [];
-};
-
-// close the server
 const stop = (cb) => {
-  if (!isListening || !server) {
-    server = null;
-    cb();
-  } else {
-    server.close(() => {
-      server = null;
-      cb();
-    });
-  }
+  clearServerStack()
+    .catch(console.error)
+    .finally(() => cb);
 };
 
 module.exports = {
-  start: start,
+  getGoodServerInstance: getGoodServerInstance,
+  getClosedServerInstance: getClosedServerInstance,
   getClient: getClient,
   getOAuth: getOAuth,
-  setResponse: setResponse,
   getLastRequest: getLastRequest,
-  closeOnRequest: closeOnRequestFunc,
   reset: reset,
+  start: start,
   stop: stop
 };

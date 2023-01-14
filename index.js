@@ -22,8 +22,8 @@ const plugins = {};
  *****************************/
 
 // TODO turn into facturoy function with
-const Connection = function(opts) {
-  var self = this;
+const Connection = function (opts) {
+  let self = this;
 
   opts = _.defaults(opts || {}, CONST.defaultOptions);
 
@@ -34,26 +34,43 @@ const Connection = function(opts) {
   self = _.assign(this, opts);
 
   // validate options
-  if (!_.isString(this.clientId)) throw new Error('invalid or missing clientId');
-  if (!_.isString(this.redirectUri)) throw new Error('invalid or missing redirectUri');
-  if (!_.isString(this.authEndpoint)) throw new Error('invalid or missing authEndpoint');
-  if (!_.isString(this.testAuthEndpoint)) throw new Error('invalid or missing testAuthEndpoint');
-  if (!_.isString(this.loginUri)) throw new Error('invalid or missing loginUri');
-  if (!_.isString(this.testLoginUri)) throw new Error('invalid or missing testLoginUri');
+  if (!_.isString(this.clientId))
+    throw new Error('invalid or missing clientId');
+  if (!_.isString(this.redirectUri))
+    throw new Error('invalid or missing redirectUri');
+  if (!_.isString(this.authEndpoint))
+    throw new Error('invalid or missing authEndpoint');
+  if (!_.isString(this.testAuthEndpoint))
+    throw new Error('invalid or missing testAuthEndpoint');
+  if (!_.isString(this.loginUri))
+    throw new Error('invalid or missing loginUri');
+  if (!_.isString(this.testLoginUri))
+    throw new Error('invalid or missing testLoginUri');
   if (!_.isBoolean(this.gzip)) throw new Error('gzip must be a boolean');
-  if (!_.isString(this.environment) || _.indexOf(CONST.ENVS, this.environment) === -1) {
-    throw new Error('invalid environment, only ' + CONST.ENVS.join(' and ') + ' are allowed');
+  if (
+    !_.isString(this.environment) ||
+    _.indexOf(CONST.ENVS, this.environment) === -1
+  ) {
+    throw new Error(
+      'invalid environment, only ' + CONST.ENVS.join(' and ') + ' are allowed'
+    );
   }
   if (!_.isString(this.mode) || _.indexOf(CONST.MODES, this.mode) === -1) {
-    throw new Error('invalid mode, only ' + CONST.MODES.join(' and ') + ' are allowed');
+    throw new Error(
+      'invalid mode, only ' + CONST.MODES.join(' and ') + ' are allowed'
+    );
   }
-  if (this.onRefresh && !_.isFunction(this.onRefresh)) throw new Error('onRefresh must be a function');
-  if (this.timeout && !_.isNumber(this.timeout)) throw new Error('timeout must be a number');
+  if (this.onRefresh && !_.isFunction(this.onRefresh))
+    throw new Error('onRefresh must be a function');
+  if (this.timeout && !_.isNumber(this.timeout))
+    throw new Error('timeout must be a number');
 
   // Validate API version format
   const apiRegEx = /v[0-9][0-9]\.0/i;
   if (this.apiVersion && !this.apiVersion.match(apiRegEx)) {
-    throw new Error('invalid apiVersion [' + this.apiVersion + '] number, use v99.0 format');
+    throw new Error(
+      'invalid apiVersion [' + this.apiVersion + '] number, use v99.0 format'
+    );
   }
 
   // parse timeout into integer in case it's a floating point.
@@ -61,13 +78,13 @@ const Connection = function(opts) {
 
   // load plugins
   if (opts.plugins && _.isArray(opts.plugins)) {
-    opts.plugins.forEach(function(pname) {
+    opts.plugins.forEach(function (pname) {
       if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
       // clone the object
       self[pname] = _.clone(plugins[pname]._fns);
 
       // now bind to the connection object
-      _.forOwn(self[pname], function(fn, key) {
+      _.forOwn(self[pname], function (fn, key) {
         self[pname][key] = _.bind(self[pname][key], self);
       });
     });
@@ -78,35 +95,35 @@ const Connection = function(opts) {
  * auth getters/setters
  *****************************/
 
-Connection.prototype.getOAuth = function() {
+Connection.prototype.getOAuth = function () {
   return this.oauth;
 };
 
-Connection.prototype.setOAuth = function(oauth) {
+Connection.prototype.setOAuth = function (oauth) {
   this.oauth = oauth;
 };
 
-Connection.prototype.getUsername = function() {
+Connection.prototype.getUsername = function () {
   return this.username;
 };
 
-Connection.prototype.setUsername = function(username) {
+Connection.prototype.setUsername = function (username) {
   this.username = username;
 };
 
-Connection.prototype.getPassword = function() {
+Connection.prototype.getPassword = function () {
   return this.password;
 };
 
-Connection.prototype.setPassword = function(password) {
+Connection.prototype.setPassword = function (password) {
   this.password = password;
 };
 
-Connection.prototype.getSecurityToken = function() {
+Connection.prototype.getSecurityToken = function () {
   return this.securityToken;
 };
 
-Connection.prototype.setSecurityToken = function(token) {
+Connection.prototype.setSecurityToken = function (token) {
   this.securityToken = token;
 };
 
@@ -114,10 +131,8 @@ Connection.prototype.setSecurityToken = function(token) {
  * helper methods
  *****************************/
 
-Connection.prototype._getOpts = function(d, c, opts) {
-  var data, cb, dt;
-
-  opts = opts || {};
+Connection.prototype._getOpts = function (d, c, opts = {}) {
+  let data, cb, dt;
 
   if (_.isFunction(d)) {
     cb = d;
@@ -152,12 +167,12 @@ Connection.prototype._getOpts = function(d, c, opts) {
  * authentication methods
  *****************************/
 
-Connection.prototype.getAuthUri = function(opts) {
+Connection.prototype.getAuthUri = function (opts) {
   if (!opts) opts = {};
 
   const self = this;
 
-  var urlOpts = {
+  let urlOpts = {
     response_type: opts.responseType || 'code',
     client_id: self.clientId,
     redirect_uri: self.redirectUri
@@ -203,7 +218,7 @@ Connection.prototype.getAuthUri = function(opts) {
     urlOpts = _.assign(urlOpts, opts.urlOpts);
   }
 
-  var endpoint;
+  let endpoint;
 
   if (opts.authEndpoint) {
     endpoint = opts.authEndpoint;
@@ -216,7 +231,7 @@ Connection.prototype.getAuthUri = function(opts) {
   return endpoint + '?' + qs.stringify(urlOpts);
 };
 
-Connection.prototype.authenticate = function(data) {
+Connection.prototype.authenticate = function (data) {
   const self = this;
   const opts = _.defaults(this._getOpts(data), {
     executeOnRefresh: false,
@@ -229,7 +244,7 @@ Connection.prototype.authenticate = function(data) {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
 
-  var bopts = {
+  let bopts = {
     client_id: self.clientId,
     client_secret: self.clientSecret
   };
@@ -263,13 +278,13 @@ Connection.prototype.authenticate = function(data) {
     try {
       this._apiAuthRequest(opts)
         .then((res) => {
-          var old = _.clone(opts.oauth);
+          let old = _.clone(opts.oauth);
           _.assign(opts.oauth, res);
           if (opts.assertion) {
             opts.oauth.assertion = opts.assertion;
           }
           if (self.onRefresh && opts.executeOnRefresh === true) {
-            self.onRefresh.call(self, opts.oauth, old, function(err3) {
+            self.onRefresh.call(self, opts.oauth, old, function (err3) {
               if (err3) {
                 reject(err3);
               } else {
@@ -288,7 +303,7 @@ Connection.prototype.authenticate = function(data) {
   return result;
 };
 
-Connection.prototype.refreshToken = function(data) {
+Connection.prototype.refreshToken = function (data) {
   const self = this;
 
   const opts = this._getOpts(data, null, {
@@ -308,7 +323,8 @@ Connection.prototype.refreshToken = function(data) {
   // support for SAML-based token refreshes
   if (!opts.oauth.refresh_token && (opts.oauth.assertion || opts.assertion)) {
     refreshOpts.grant_type = 'assertion';
-    refreshOpts.assertion_type = 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';
+    refreshOpts.assertion_type =
+      'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';
     refreshOpts.assertion = opts.assertion || opts.oauth.assertion;
   } else {
     refreshOpts.grant_type = 'refresh_token';
@@ -328,14 +344,14 @@ Connection.prototype.refreshToken = function(data) {
   const result = new Promise((resolve, reject) => {
     this._apiAuthRequest(opts)
       .then((res) => {
-        var old = _.clone(opts.oauth);
+        let old = _.clone(opts.oauth);
         _.assign(opts.oauth, res);
         if (opts.assertion) {
           opts.oauth.assertion = opts.assertion;
         }
         if (self.onRefresh && opts.executeOnRefresh === true) {
           // TODO: remove callback from onRefresh call
-          self.onRefresh.call(self, opts.oauth, old, function(err3) {
+          self.onRefresh.call(self, opts.oauth, old, function (err3) {
             if (err3) {
               reject(err3);
             } else {
@@ -352,8 +368,8 @@ Connection.prototype.refreshToken = function(data) {
   return result;
 };
 
-Connection.prototype.revokeToken = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.revokeToken = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'token'
   });
 
@@ -369,28 +385,28 @@ Connection.prototype.revokeToken = function(data) {
   return this._apiAuthRequest(opts);
 };
 
-Connection.prototype.getPasswordStatus = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.getPasswordStatus = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'id'
   });
 
-  var id = opts.sobject ? opts.sobject.getId() : opts.id;
+  let id = opts.sobject ? opts.sobject.getId() : opts.id;
   opts.resource = '/sobjects/user/' + id + '/password';
   opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
-Connection.prototype.updatePassword = function(data) {
-  var opts = this._getOpts(data);
-  var id = opts.sobject ? opts.sobject.getId() : opts.id;
+Connection.prototype.updatePassword = function (data) {
+  let opts = this._getOpts(data);
+  let id = opts.sobject ? opts.sobject.getId() : opts.id;
   opts.resource = '/sobjects/user/' + id + '/password';
   opts.method = 'POST';
   opts.body = JSON.stringify({ newPassword: opts.newPassword });
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getIdentity = function(data) {
-  var opts = this._getOpts(data);
+Connection.prototype.getIdentity = function (data) {
+  let opts = this._getOpts(data);
   opts.uri = opts.oauth.id;
   opts.method = 'GET';
   return this._apiRequest(opts);
@@ -400,30 +416,30 @@ Connection.prototype.getIdentity = function(data) {
  * system api methods
  *****************************/
 
-Connection.prototype.getVersions = function() {
-  var opts = this._getOpts(null);
+Connection.prototype.getVersions = function () {
+  let opts = this._getOpts(null);
   opts.uri = 'http://na1.salesforce.com/services/data/';
   opts.method = 'GET';
   return this._apiAuthRequest(opts);
 };
 
-Connection.prototype.getResources = function(data) {
-  var opts = this._getOpts(data);
+Connection.prototype.getResources = function (data) {
+  let opts = this._getOpts(data);
   opts.resource = '/';
   opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getSObjects = function(data) {
-  //TODO: fix me! var self = this;
-  var opts = this._getOpts(data);
+Connection.prototype.getSObjects = function (data) {
+  //TODO: fix me! let self = this;
+  let opts = this._getOpts(data);
   opts.resource = '/sobjects';
   opts.method = 'GET';
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getMetadata = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.getMetadata = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'type'
   });
   opts.resource = '/sobjects/' + opts.type;
@@ -431,8 +447,8 @@ Connection.prototype.getMetadata = function(data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getDescribe = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.getDescribe = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'type'
   });
   opts.resource = '/sobjects/' + opts.type + '/describe';
@@ -440,8 +456,8 @@ Connection.prototype.getDescribe = function(data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getLimits = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.getLimits = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'type'
   });
   opts.resource = '/limits';
@@ -453,12 +469,16 @@ Connection.prototype.getLimits = function(data) {
  * crud methods
  *****************************/
 
-Connection.prototype.insert = function(data) {
-  var opts = this._getOpts(data);
-  var type = opts.sobject.getType();
+Connection.prototype.insert = function (data) {
+  let opts = this._getOpts(data);
+  let type = opts.sobject.getType();
   opts.resource = '/sobjects/' + type;
   opts.method = 'POST';
-  if (type === 'document' || type === 'attachment' || type === 'contentversion') {
+  if (
+    type === 'document' ||
+    type === 'attachment' ||
+    type === 'contentversion'
+  ) {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(false));
@@ -466,13 +486,17 @@ Connection.prototype.insert = function(data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.update = function(data) {
-  var opts = this._getOpts(data);
-  var type = opts.sobject.getType();
-  var id = opts.sobject.getId();
+Connection.prototype.update = function (data) {
+  let opts = this._getOpts(data);
+  let type = opts.sobject.getType();
+  let id = opts.sobject.getId();
   opts.resource = '/sobjects/' + type + '/' + id;
   opts.method = 'PATCH';
-  if (type === 'document' || type === 'attachment' || type === 'contentversion') {
+  if (
+    type === 'document' ||
+    type === 'attachment' ||
+    type === 'contentversion'
+  ) {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(true));
@@ -480,27 +504,27 @@ Connection.prototype.update = function(data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.upsert = function(data) {
-  var opts = this._getOpts(data);
-  var type = opts.sobject.getType();
-  var extIdField = opts.sobject.getExternalIdField();
-  var extId = opts.sobject.getExternalId();
+Connection.prototype.upsert = function (data) {
+  let opts = this._getOpts(data);
+  let type = opts.sobject.getType();
+  let extIdField = opts.sobject.getExternalIdField();
+  let extId = opts.sobject.getExternalId();
   opts.resource = '/sobjects/' + type + '/' + extIdField + '/' + extId;
   opts.method = 'PATCH';
   opts.body = JSON.stringify(opts.sobject._getPayload(false));
   return this._apiRequest(opts);
 };
 
-Connection.prototype.delete = function(data) {
-  var opts = this._getOpts(data);
-  var type = opts.sobject.getType();
-  var id = opts.sobject.getId();
+Connection.prototype.delete = function (data) {
+  let opts = this._getOpts(data);
+  let type = opts.sobject.getType();
+  let id = opts.sobject.getId();
   opts.resource = '/sobjects/' + type + '/' + id;
   opts.method = 'DELETE';
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getRecord = function(data) {
+Connection.prototype.getRecord = function (data) {
   const opts = this._getOpts(data);
   const type = opts.sobject ? opts.sobject.getType() : opts.type;
   const id = opts.sobject ? opts.sobject.getId() : opts.id;
@@ -534,9 +558,11 @@ Connection.prototype.getRecord = function(data) {
  * blob/binary methods
  *****************************/
 
-Connection.prototype.getBody = function(data) {
+Connection.prototype.getBody = function (data) {
   const opts = this._getOpts(data);
-  const type = (opts.sobject ? opts.sobject.getType() : opts.type).toLowerCase();
+  const type = (
+    opts.sobject ? opts.sobject.getType() : opts.type
+  ).toLowerCase();
 
   if (type === 'document') {
     return this.getDocumentBody(opts);
@@ -549,36 +575,36 @@ Connection.prototype.getBody = function(data) {
   }
 };
 
-Connection.prototype.getAttachmentBody = function(data) {
-  var opts = this._getOpts(data);
-  var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
+Connection.prototype.getAttachmentBody = function (data) {
+  let opts = this._getOpts(data);
+  let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/attachment/' + id + '/body';
   opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getDocumentBody = function(data) {
-  var opts = this._getOpts(data);
-  var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
+Connection.prototype.getDocumentBody = function (data) {
+  let opts = this._getOpts(data);
+  let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/document/' + id + '/body';
   opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getContentVersionBody = function(data) {
-  var opts = this._getOpts(data);
-  var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
+Connection.prototype.getContentVersionBody = function (data) {
+  let opts = this._getOpts(data);
+  let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/contentversion/' + id + '/body';
   opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getContentVersionData = function(data) {
-  var opts = this._getOpts(data);
-  var id = opts.sobject ? util.findId(opts.sobject) : opts.id;
+Connection.prototype.getContentVersionData = function (data) {
+  let opts = this._getOpts(data);
+  let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/contentversion/' + id + '/versiondata';
   opts.method = 'GET';
   opts.blob = true;
@@ -589,8 +615,8 @@ Connection.prototype.getContentVersionData = function(data) {
  * query
  *****************************/
 
-Connection.prototype.query = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.query = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'query',
     defaults: {
       fetchAll: false,
@@ -601,8 +627,8 @@ Connection.prototype.query = function(data) {
   return this._queryHandler(opts);
 };
 
-Connection.prototype.queryAll = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.queryAll = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'query',
     defaults: {
       fetchAll: false,
@@ -613,7 +639,7 @@ Connection.prototype.queryAll = function(data) {
   return this._queryHandler(opts);
 };
 
-Connection.prototype._queryHandler = function(data) {
+Connection.prototype._queryHandler = function (data) {
   const self = this;
   const recs = [];
   const opts = this._getOpts(data);
@@ -634,11 +660,11 @@ Connection.prototype._queryHandler = function(data) {
     // since it might get called recursive
     function handleResponse(resp) {
       if (resp.records && resp.records.length > 0) {
-        _.each(resp.records, function(r) {
+        _.each(resp.records, function (r) {
           if (opts.raw) {
             recs.push(r);
           } else {
-            var rec = new Record(r);
+            let rec = new Record(r);
             rec._reset();
             recs.push(rec);
           }
@@ -667,7 +693,7 @@ Connection.prototype._queryHandler = function(data) {
  * search
  *****************************/
 
-Connection.prototype.search = function(data) {
+Connection.prototype.search = function (data) {
   const opts = this._getOpts(data, null, {
     singleProp: 'search',
     defaults: {
@@ -685,8 +711,8 @@ Connection.prototype.search = function(data) {
         if (opts.raw || !resp.length) {
           resolve(resp);
         } else {
-          var recs = [];
-          resp.forEach(function(r) {
+          let recs = [];
+          resp.forEach(function (r) {
             recs.push(new Record(r));
           });
           resolve(resp);
@@ -706,8 +732,8 @@ function requireForwardSlash(uri) {
   return uri;
 }
 
-Connection.prototype.getUrl = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.getUrl = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -715,8 +741,8 @@ Connection.prototype.getUrl = function(data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.putUrl = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.putUrl = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -727,8 +753,8 @@ Connection.prototype.putUrl = function(data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.postUrl = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.postUrl = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -739,8 +765,8 @@ Connection.prototype.postUrl = function(data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.deleteUrl = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.deleteUrl = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -752,8 +778,8 @@ Connection.prototype.deleteUrl = function(data) {
  * apex rest
  *****************************/
 
-Connection.prototype.apexRest = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.apexRest = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'uri'
   });
   // Allow for data.uri to start with or without a /
@@ -772,9 +798,9 @@ Connection.prototype.apexRest = function(data) {
  * streaming api
  *****************************/
 
-Connection.prototype.createStreamClient = function(data) {
-  var self = this;
-  var opts = this._getOpts(data, null, {
+Connection.prototype.createStreamClient = function (data) {
+  let self = this;
+  let opts = this._getOpts(data, null, {
     defaults: {
       apiVersion: self.apiVersion,
       timeout: null,
@@ -784,8 +810,8 @@ Connection.prototype.createStreamClient = function(data) {
   return new FDCStream.Client(opts);
 };
 
-Connection.prototype.subscribe = function(data) {
-  var opts = this._getOpts(data, null, {
+Connection.prototype.subscribe = function (data) {
+  let opts = this._getOpts(data, null, {
     singleProp: 'topic',
     defaults: {
       timeout: null,
@@ -793,13 +819,13 @@ Connection.prototype.subscribe = function(data) {
     }
   });
 
-  var client = this.createStreamClient(opts);
+  let client = this.createStreamClient(opts);
   return client.subscribe(opts);
 };
 
 // keeping this method for backwards compatibility
 // proxies to connection.subscribe now
-Connection.prototype.stream = function(data) {
+Connection.prototype.stream = function (data) {
   return this.subscribe(data);
 };
 
@@ -807,7 +833,7 @@ Connection.prototype.stream = function(data) {
  * auto-refresh
  *****************************/
 
-Connection.prototype.autoRefreshToken = function(data) {
+Connection.prototype.autoRefreshToken = function (data) {
   const self = this;
 
   const opts = this._getOpts(data, null, {
@@ -844,7 +870,7 @@ Connection.prototype.autoRefreshToken = function(data) {
  * internal api methods - Promises based, no callbacks
  *****************************/
 
-Connection.prototype._apiAuthRequest = function(opts) {
+Connection.prototype._apiAuthRequest = function (opts) {
   const self = this;
 
   // set timeout
@@ -887,7 +913,7 @@ Connection.prototype._apiAuthRequest = function(opts) {
   return result;
 };
 
-Connection.prototype._apiRequest = function(opts) {
+Connection.prototype._apiRequest = function (opts) {
   /**
    * options:
    * - sobject
@@ -935,7 +961,9 @@ function responseFailureCheck(res) {
     err.statusCode = res.status;
     throw err;
   } else if (!res.body) {
-    const err = new Error('Salesforce returned no body and status code ' + res.status);
+    const err = new Error(
+      'Salesforce returned no body and status code ' + res.status
+    );
     err.statusCode = res.status;
     throw err;
   }
@@ -989,7 +1017,8 @@ function unsucessfullResponseCheck(res, self, opts) {
   // confirm auto-refresh support
   if (
     e.errorCode &&
-    (e.errorCode === 'INVALID_SESSION_ID' || e.errorCode === 'Bad_OAuth_Token') &&
+    (e.errorCode === 'INVALID_SESSION_ID' ||
+      e.errorCode === 'Bad_OAuth_Token') &&
     self.autoRefresh === true &&
     (opts.oauth.refresh_token || (self.getUsername() && self.getPassword())) &&
     !opts._retryCount
@@ -1022,7 +1051,7 @@ function Plugin(opts) {
   this.util = _.clone(util);
 }
 
-Plugin.prototype.fn = function(fnName, fn) {
+Plugin.prototype.fn = function (fnName, fn) {
   if (typeof fn !== 'function') {
     throw new Error('invalid function provided');
   }
@@ -1038,7 +1067,7 @@ Plugin.prototype.fn = function(fnName, fn) {
  * exports
  *****************************/
 
-const plugin = function(opts) {
+const plugin = function (opts) {
   if (typeof opts === 'string') {
     opts = { namespace: opts };
   }
@@ -1049,18 +1078,18 @@ const plugin = function(opts) {
     override: false
   });
   if (plugins[opts.namespace] && opts.override !== true) {
-    throw new Error('a plugin with namespace ' + opts.namespace + ' already exists');
+    throw new Error(
+      'a plugin with namespace ' + opts.namespace + ' already exists'
+    );
   }
   plugins[opts.namespace] = new Plugin(opts);
   return plugins[opts.namespace];
 };
 
 // connection creation
-const createConnection = function(opts) {
-  return new Connection(opts);
-};
+const createConnection = (opts) => new Connection(opts);
 
-const createSObject = function(type, fields) {
+const createSObject = function (type, fields) {
   const data = fields || {};
   data.attributes = {
     type: type
