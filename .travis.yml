@@ -8,12 +8,12 @@ git:
   depth: 3
 branches:
   only:
-  - master
-  - develop    
-  - /^greenkeeper/.*$/
+    - master
+    - develop
+    - /^greenkeeper/.*$/
 after_success:
   - npm run coveralls
-  - npm run codacy
+  - bash <(curl -Ls https://coverage.codacy.com/get.sh) report
   - bash <(curl -s https://codecov.io/bash)
 deploy:
   provider: npm
