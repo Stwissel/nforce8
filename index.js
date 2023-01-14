@@ -10,6 +10,7 @@ const errors = require('./lib/errors');
 const multipart = require('./lib/multipart');
 const optionHelper = require('./lib/optionhelper')();
 const CONST = require('./lib/constants');
+const { validateConnectionOptions } = require('./lib/connection');
 
 /*****************************
  * constants
@@ -34,44 +35,7 @@ const Connection = function (opts) {
   self = _.assign(this, opts);
 
   // validate options
-  if (!_.isString(this.clientId))
-    throw new Error('invalid or missing clientId');
-  if (!_.isString(this.redirectUri))
-    throw new Error('invalid or missing redirectUri');
-  if (!_.isString(this.authEndpoint))
-    throw new Error('invalid or missing authEndpoint');
-  if (!_.isString(this.testAuthEndpoint))
-    throw new Error('invalid or missing testAuthEndpoint');
-  if (!_.isString(this.loginUri))
-    throw new Error('invalid or missing loginUri');
-  if (!_.isString(this.testLoginUri))
-    throw new Error('invalid or missing testLoginUri');
-  if (!_.isBoolean(this.gzip)) throw new Error('gzip must be a boolean');
-  if (
-    !_.isString(this.environment) ||
-    _.indexOf(CONST.ENVS, this.environment) === -1
-  ) {
-    throw new Error(
-      'invalid environment, only ' + CONST.ENVS.join(' and ') + ' are allowed'
-    );
-  }
-  if (!_.isString(this.mode) || _.indexOf(CONST.MODES, this.mode) === -1) {
-    throw new Error(
-      'invalid mode, only ' + CONST.MODES.join(' and ') + ' are allowed'
-    );
-  }
-  if (this.onRefresh && !_.isFunction(this.onRefresh))
-    throw new Error('onRefresh must be a function');
-  if (this.timeout && !_.isNumber(this.timeout))
-    throw new Error('timeout must be a number');
-
-  // Validate API version format
-  const apiRegEx = /v[0-9][0-9]\.0/i;
-  if (this.apiVersion && !this.apiVersion.match(apiRegEx)) {
-    throw new Error(
-      'invalid apiVersion [' + this.apiVersion + '] number, use v99.0 format'
-    );
-  }
+  validateConnectionOptions(this);
 
   // parse timeout into integer in case it's a floating point.
   this.timeout = parseInt(this.timeout, 10);
@@ -167,9 +131,7 @@ Connection.prototype._getOpts = function (d, c, opts = {}) {
  * authentication methods
  *****************************/
 
-Connection.prototype.getAuthUri = function (opts) {
-  if (!opts) opts = {};
-
+Connection.prototype.getAuthUri = function (opts = {}) {
   const self = this;
 
   let urlOpts = {
