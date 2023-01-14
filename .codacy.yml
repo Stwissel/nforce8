@@ -1,10 +1,16 @@
 ---
 duplication:
-   enabled: true
+  enabled: true
+  exclude_paths:
+    - 'examples/**'
  metrics:
-   enabled: true
+  enabled: true
+  exclude_paths:
+    - 'examples/**'
  coverage:
    enabled: true
+   exclude_paths:
+    - 'examples/**'
 exclude_paths:
   - examples/**
   - docs/**
