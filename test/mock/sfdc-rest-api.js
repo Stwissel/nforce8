@@ -1,107 +1,95 @@
-const http = require("http");
-let port = process.env.PORT || 3000;
-const CONST = require("../../lib/constants");
+const http = require('http');
+const CONST = require('../../lib/constants');
 const apiVersion = CONST.API;
+let port = process.env.PORT || 3000;
+let lastRequest = null;
+let nextResponse = null;
+let closeOnRequest = false;
+let isListening = false;
+let server = null;
+let sockets = [];
 
-var lastRequest = null;
-var nextResponse = null;
-var closeOnRequest = false;
-var isListening = false;
+// Listener function for http server
+const serverListener = (req, res) => {
+  lastRequest = req;
+  lastRequest.body = '';
 
-var sockets = [];
-var server;
+  // Incoming data
+  const onData = (chunk) => (lastRequest.body += chunk.toString());
 
-const setPort = function(p) {
-  port = p;
+  // End of a request
+  const onEnd = () => {
+    // Close if requested
+    if (closeOnRequest) {
+      if (sockets.length) {
+        for (const socket of sockets) {
+          socket.destroy();
+        }
+      }
+      return server.close();
+    }
+
+    // Otherwise return some results
+    if (nextResponse) {
+      res.writeHead(nextResponse.code, nextResponse.headers);
+      if (nextResponse.body) {
+        res.end(nextResponse.body, 'utf8');
+      }
+    } else {
+      res.writeHead(200, {
+        'Content-Type': 'application/json'
+      });
+      res.end('{"Status":"OK"}');
+    }
+  };
+
+  req.on('data', onData);
+  req.on('end', onEnd);
 };
 
-const start = function(port, cb) {
+// Server functions
+const onConnection = (socket) => {
+  sockets.push(socket);
+  socket.on('close', () => sockets.splice(sockets.indexOf(socket), 1));
+};
+
+const start = function (port, cb) {
   port = port || process.env.PORT || 3000;
-
-  server = http.createServer(function(req, res) {
-    lastRequest = req;
-    lastRequest.body = "";
-
-    req.on("data", function(chunk) {
-      lastRequest.body += chunk.toString();
-    });
-
-    req.on("end", function() {
-      if (closeOnRequest) {
-        if (sockets.length) {
-          for (var i = 0; i < sockets.length; i++) {
-            sockets[i].destroy();
-          }
-        }
-        return server.close();
-      }
-
-      if (nextResponse) {
-        res.writeHead(nextResponse.code, nextResponse.headers);
-        if (nextResponse.body) {
-          res.write(nextResponse.body, "utf8");
-        }
-      } else {
-        res.writeHead(200, {
-          "Content-Type": "application/json"
-        });
-        res.write('{"Status":"OK"}');
-      }
-      res.end();
-    });
-  });
-
-  server.on("listening", function() {
-    isListening = true;
-  });
-
-  server.on("close", function() {
-    isListening = false;
-  });
-
-  server.on("connection", function(socket) {
-    sockets.push(socket);
-    socket.on("close", function() {
-      sockets.splice(sockets.indexOf(socket), 1);
-    });
-  });
-
-  server.listen(port, function(err) {
-    if (err) {
-      return cb(err);
-    }
-    cb();
-  });
+  server = http.createServer(serverListener);
+  server.on('listening', () => (isListening = true));
+  server.on('close', () => (isListening = false));
+  server.on('connection', onConnection);
+  server.listen(port, (err) => (err ? cb(err) : cb()));
 };
 
 // return an example client
-const getClient = function(opts) {
+const getClient = function (opts) {
   opts = opts || {};
   return {
-    clientId: "ADFJSD234ADF765SFG55FD54S",
-    clientSecret: "adsfkdsalfajdskfa",
-    redirectUri: "http://localhost:" + port + "/oauth/_callback",
-    loginUri: "http://localhost:" + port + "/login/uri",
+    clientId: 'ADFJSD234ADF765SFG55FD54S',
+    clientSecret: 'adsfkdsalfajdskfa',
+    redirectUri: 'http://localhost:' + port + '/oauth/_callback',
+    loginUri: 'http://localhost:' + port + '/login/uri',
     apiVersion: opts.apiVersion || apiVersion,
-    mode: opts.mode || "multi",
+    mode: opts.mode || 'multi',
     autoRefresh: opts.autoRefresh || false,
     onRefresh: opts.onRefresh || undefined
   };
 };
 
 // return an example oauth
-const getOAuth = function() {
+const getOAuth = function () {
   return {
     id:
-      "http://localhost:" + port + "/id/00Dd0000000fOlWEAU/005d00000014XTPAA2",
-    issued_at: "1362448234803",
-    instance_url: "http://localhost:" + port,
-    signature: "djaflkdjfdalkjfdalksjfalkfjlsdj",
-    access_token: "aflkdsjfdlashfadhfladskfjlajfalskjfldsakjf"
+      'http://localhost:' + port + '/id/00Dd0000000fOlWEAU/005d00000014XTPAA2',
+    issued_at: '1362448234803',
+    instance_url: 'http://localhost:' + port,
+    signature: 'djaflkdjfdalkjfdalksjfalkfjlsdj',
+    access_token: 'aflkdsjfdlashfadhfladskfjlajfalskjfldsakjf'
   };
 };
 
-const setResponse = function(code, headers, body) {
+const setResponse = function (code, headers, body) {
   nextResponse = {
     code: code,
     headers: headers,
@@ -110,17 +98,13 @@ const setResponse = function(code, headers, body) {
 };
 
 // return the last cached request
-const getLastRequest = function() {
-  return lastRequest;
-};
+const getLastRequest = () => lastRequest;
 
 // simulate a socket close on a request
-const closeOnRequestFunc = function(close) {
-  closeOnRequest = close;
-};
+const closeOnRequestFunc = (close) => (closeOnRequest = close);
 
 // reset the cache
-const reset = function() {
+const reset = function () {
   lastRequest = null;
   nextResponse = null;
   closeOnRequest = false;
@@ -128,18 +112,19 @@ const reset = function() {
 };
 
 // close the server
-const stop = function(cb) {
-  if (!isListening) {
+const stop = (cb) => {
+  if (!isListening || !server) {
     server = null;
-    return cb();
+    cb();
   } else {
-    server.close(cb);
-    server = null;
+    server.close(() => {
+      server = null;
+      cb();
+    });
   }
 };
 
 module.exports = {
-  setPort: setPort,
   start: start,
   getClient: getClient,
   getOAuth: getOAuth,
