@@ -1,12 +1,12 @@
-"use strict";
+'use strict';
 /* End to End Tests - if environment parameters are found pointing to a Salesforce instance */
-const nforce = require("../");
-const should = require("should");
+const nforce = require('../');
+const should = require('should');
 
 // The SFDC Client instance
 let client = undefined;
 
-describe("Integration Test against an actual Salesforce instance", () => {
+describe('Integration Test against an actual Salesforce instance', () => {
   before(() => {
     let creds = checkEnvCredentials();
     if (creds == null) {
@@ -24,8 +24,8 @@ describe("Integration Test against an actual Salesforce instance", () => {
     }
   });
 
-  describe("Client session check", () => {
-    it("should have a valid client session", () => {
+  describe('Client session check', () => {
+    it('should have a valid client session', () => {
       should.exists(client);
     });
   });
@@ -50,7 +50,7 @@ function checkEnvCredentials() {
     };
   }
   /*
-    var x = {
+    let x = {
         clientId: "ADFJSD234ADF765SFG55FD54S",
         clientSecret: "adsfkdsalfajdskfa",
         redirectUri: "http://localhost:" + port + "/oauth/_callback",
