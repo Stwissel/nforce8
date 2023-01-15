@@ -138,12 +138,11 @@ describe('api-mock-crud', () => {
   });
 
   // reset the lastRequest
-  afterEach(function () {
-    api.reset();
-  });
+  afterEach(() => api.reset());
 
   // close mock server
-  after(function (done) {
+  after((done) => {
+    this.timeout(10000);
     api.stop(done);
   });
 });

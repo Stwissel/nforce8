@@ -6,7 +6,7 @@ const should = require('should');
 // The SFDC Client instance
 let client = undefined;
 
-describe('Integration Test against an actual Salesforce instance', () => {
+describe('Integration Test against an actual Salesforce instance', function () {
   before(() => {
     let creds = checkEnvCredentials();
     if (creds == null) {
