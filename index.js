@@ -22,7 +22,7 @@ const plugins = {};
  * connection object
  *****************************/
 
-// TODO turn into facturoy function with
+// TODO turn into ES6 class
 const Connection = function (opts) {
   let self = this;
 
@@ -96,33 +96,32 @@ Connection.prototype.setSecurityToken = function (token) {
  *****************************/
 
 Connection.prototype._getOpts = function (d, c, opts = {}) {
-  let data, cb, dt;
+  let data = {};
+  let callback;
+  let dataTransfer;
 
-  if (_.isFunction(d)) {
-    cb = d;
-    dt = null;
+  if (util.isFunction(d)) {
+    callback = d;
+    dataTransfer = null;
   } else {
-    cb = c;
-    dt = d;
+    callback = c;
+    dataTransfer = d;
   }
 
-  if (opts.singleProp && dt && !_.isObject(dt)) {
-    data = {};
-    data[opts.singleProp] = dt;
-  } else if (_.isObject(dt)) {
-    data = dt;
-  } else {
-    data = {};
+  if (opts.singleProp && dataTransfer && !util.isObject(dataTransfer)) {
+    data[opts.singleProp] = dataTransfer;
+  } else if (util.isObject(dataTransfer)) {
+    data = dataTransfer;
   }
 
-  data.callback = cb;
+  data.callback = callback;
 
   if (this.mode === 'single' && !data.oauth) {
     data.oauth = this.oauth;
   }
 
-  if (opts.defaults && _.isObject(opts.defaults)) {
-    data = _.defaults(data, opts.defaults);
+  if (opts.defaults && util.isObject(opts.defaults)) {
+    data = Object.assign({}, opts.defaults, data);
   }
   return data;
 };
