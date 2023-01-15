@@ -28,3 +28,4 @@
 - Kessiler -> [kessiler](https://github.com/kessiler)
 - Vineet Sinha -> [vineet-sinha](https://github.com/vineet-sinha)
 - Stephan H. Wissel -> [stwissel](https://github.com/stwissel)
+- Todd Hiles -> [moonrockfamily](https://github.com/moonrockfamily)

@@ -1,151 +1,122 @@
-const http = require("http");
-let port = process.env.PORT || 3000;
-const CONST = require("../../lib/constants");
+const { resolvePtr } = require('dns');
+const http = require('http');
+const CONST = require('../../lib/constants');
 const apiVersion = CONST.API;
+let port = process.env.PORT || 3000;
+let serverStack = [];
+let requestStack = [];
 
-var lastRequest = null;
-var nextResponse = null;
-var closeOnRequest = false;
-var isListening = false;
-
-var sockets = [];
-var server;
-
-const setPort = function(p) {
-  port = p;
+const reset = () => {
+  requestStack.length = 0;
 };
 
-const start = function(port, cb) {
-  port = port || process.env.PORT || 3000;
+const getLastRequest = () => requestStack[0];
 
-  server = http.createServer(function(req, res) {
-    lastRequest = req;
-    lastRequest.body = "";
+// Default answer, when none provided
+const defaultResponse = {
+  code: 200,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ Status: 'OK' })
+};
 
-    req.on("data", function(chunk) {
-      lastRequest.body += chunk.toString();
-    });
+// Clear out the server
+const clearServerStack = () => {
+  let allPromises = [];
+  let curServer = serverStack.pop();
+  while (curServer) {
+    allPromises.push(curServer.close());
+    curServer = serverStack.pop();
+  }
+  return Promise.all(allPromises);
+};
 
-    req.on("end", function() {
-      if (closeOnRequest) {
-        if (sockets.length) {
-          for (var i = 0; i < sockets.length; i++) {
-            sockets[i].destroy();
+// Returns a server instance with a predefinded answer
+const getServerInstance = (serverListener) => {
+  return new Promise((resolve, reject) => {
+    clearServerStack()
+      .then(() => {
+        let server = http.createServer(serverListener);
+        server.listen(port, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            serverStack.push(server);
+            resolve(server);
           }
-        }
-        return server.close();
-      }
-
-      if (nextResponse) {
-        res.writeHead(nextResponse.code, nextResponse.headers);
-        if (nextResponse.body) {
-          res.write(nextResponse.body, "utf8");
-        }
-      } else {
-        res.writeHead(200, {
-          "Content-Type": "application/json"
         });
-        res.write('{"Status":"OK"}');
-      }
-      res.end();
-    });
+      })
+      .catch(reject);
   });
+};
 
-  server.on("listening", function() {
-    isListening = true;
-  });
-
-  server.on("close", function() {
-    isListening = false;
-  });
-
-  server.on("connection", function(socket) {
-    sockets.push(socket);
-    socket.on("close", function() {
-      sockets.splice(sockets.indexOf(socket), 1);
-    });
-  });
-
-  server.listen(port, function(err) {
-    if (err) {
-      return cb(err);
+const getGoodServerInstance = (response = defaultResponse) => {
+  const serverListener = (req, res) => {
+    requestStack.push(req);
+    res.writeHead(response.code, response.headers);
+    if (response.body) {
+      res.end(response.body, 'utf8');
     }
-    cb();
-  });
+  };
+  return getServerInstance(serverListener);
+};
+
+const getClosedServerInstance = () => {
+  const serverListener = (req, res) => {
+    console.log(req.url);
+    const fatError = new Error('ECONNRESET');
+    fatError.type = 'system';
+    fatError.errno = 'ECONNRESET';
+    req.destroy(fatError);
+  };
+  return getServerInstance(serverListener);
 };
 
 // return an example client
-const getClient = function(opts) {
+const getClient = function (opts) {
   opts = opts || {};
   return {
-    clientId: "ADFJSD234ADF765SFG55FD54S",
-    clientSecret: "adsfkdsalfajdskfa",
-    redirectUri: "http://localhost:" + port + "/oauth/_callback",
-    loginUri: "http://localhost:" + port + "/login/uri",
+    clientId: 'ADFJSD234ADF765SFG55FD54S',
+    clientSecret: 'adsfkdsalfajdskfa',
+    redirectUri: 'http://localhost:' + port + '/oauth/_callback',
+    loginUri: 'http://localhost:' + port + '/login/uri',
     apiVersion: opts.apiVersion || apiVersion,
-    mode: opts.mode || "multi",
+    mode: opts.mode || 'multi',
     autoRefresh: opts.autoRefresh || false,
     onRefresh: opts.onRefresh || undefined
   };
 };
 
 // return an example oauth
-const getOAuth = function() {
+const getOAuth = function () {
   return {
     id:
-      "http://localhost:" + port + "/id/00Dd0000000fOlWEAU/005d00000014XTPAA2",
-    issued_at: "1362448234803",
-    instance_url: "http://localhost:" + port,
-    signature: "djaflkdjfdalkjfdalksjfalkfjlsdj",
-    access_token: "aflkdsjfdlashfadhfladskfjlajfalskjfldsakjf"
+      'http://localhost:' + port + '/id/00Dd0000000fOlWEAU/005d00000014XTPAA2',
+    issued_at: '1362448234803',
+    instance_url: 'http://localhost:' + port,
+    signature: 'djaflkdjfdalkjfdalksjfalkfjlsdj',
+    access_token: 'aflkdsjfdlashfadhfladskfjlajfalskjfldsakjf'
   };
 };
 
-const setResponse = function(code, headers, body) {
-  nextResponse = {
-    code: code,
-    headers: headers,
-    body: body
-  };
+const start = (incomingPort, cb) => {
+  port = incomingPort;
+  getGoodServerInstance()
+    .catch(console.error)
+    .finally(() => cb());
 };
-
-// return the last cached request
-const getLastRequest = function() {
-  return lastRequest;
-};
-
-// simulate a socket close on a request
-const closeOnRequestFunc = function(close) {
-  closeOnRequest = close;
-};
-
-// reset the cache
-const reset = function() {
-  lastRequest = null;
-  nextResponse = null;
-  closeOnRequest = false;
-  sockets = [];
-};
-
-// close the server
-const stop = function(cb) {
-  if (!isListening) {
-    server = null;
-    return cb();
-  } else {
-    server.close(cb);
-    server = null;
-  }
+const stop = (cb) => {
+  clearServerStack()
+    .catch(console.error)
+    .finally(() => cb);
 };
 
 module.exports = {
-  setPort: setPort,
-  start: start,
+  getGoodServerInstance: getGoodServerInstance,
+  getClosedServerInstance: getClosedServerInstance,
   getClient: getClient,
   getOAuth: getOAuth,
-  setResponse: setResponse,
   getLastRequest: getLastRequest,
-  closeOnRequest: closeOnRequestFunc,
   reset: reset,
+  start: start,
   stop: stop
 };

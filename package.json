@@ -1,7 +1,7 @@
 {
   "name": "nforce8",
   "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "2.0.12",
+  "version": "2.1.0",
   "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
   "contributors": [
     {
@@ -12,6 +12,11 @@
     {
       "name": "Srikanth Ramakrishnan",
       "email": "srikanth.r@salesforce.com"
+    },
+    {
+      "name": "Todd Hiles",
+      "url": "https://github.com/moonrockfamily/nforce8",
+      "email": "2ToddHiles@gmail.com"
     }
   ],
   "keywords": [
@@ -33,37 +38,35 @@
   },
   "main": "index.js",
   "dependencies": {
-    "faye": "1.2.5",
+    "faye": "^1.4.0",
     "lodash": "^4.17.21",
-    "mime": "2.4.5",
-    "node-fetch": "^2.6.7"
+    "mime": "^3.0.0",
+    "node-fetch": "^2.6.8"
   },
   "devDependencies": {
-    "body-parser": "1.19.0",
-    "codacy-coverage": "^3.4.0",
-    "cookie-parser": "1.4.5",
-    "coveralls": "^3.1.0",
-    "express": "4.17.3",
-    "express-session": "1.17.1",
-    "mocha": "^7.1.2",
-    "nyc": "^15.0.1",
-    "pug": "^3.0.1",
+    "@snyk/protect": "^1.1087.0",
+    "body-parser": "^1.20.1",
+    "cookie-parser": "^1.4.6",
+    "coveralls": "^3.1.1",
+    "mocha": "^10.2.0",
+    "nyc": "^15.1.0",
+    "pug": "^3.0.2",
     "run-sequence": "^2.2.1",
-    "should": "13.2.3"
+    "should": "^13.2.3"
   },
-  "optionalDependencies": {},
   "engines": {
-    "node": ">8.0"
+    "node": ">18.0"
   },
   "bugs": {
     "url": "http://github.com/stwissel/nforce8/issues"
   },
   "scripts": {
     "preversion": "npm test",
-    "test": "nyc --reporter=text --reporter=html --reporter=text-lcov --reporter=lcovonly ./node_modules/mocha/bin/mocha ./test --reporter spec",
+    "test": "nyc --reporter=text --reporter=html --reporter=text-lcov --reporter=lcovonly ./node_modules/.bin/mocha ./test --reporter spec",
     "postversion": "git push && git push --tags",
     "coveralls": "cat ./coverage/lcov.info | coveralls",
-    "codacy": "cat ./coverage/lcov.info | codacy-coverage"
+    "snyk-protect": "node_modules/.bin/snyk-protect",
+    "prepare": "npm run snyk-protect"
   },
   "nyc": {
     "exclude": [
@@ -71,5 +74,6 @@
       "docs"
     ]
   },
-  "license": "MIT"
+  "license": "MIT",
+  "snyk": true
 }
