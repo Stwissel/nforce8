@@ -6,30 +6,33 @@ const should = require('should');
 // The SFDC Client instance
 let client = undefined;
 
-describe('Integration Test against an actual Salesforce instance', () => {
-  before(() => {
-    let creds = checkEnvCredentials();
-    if (creds == null) {
-      // Can't run integration tests
-      this.skip();
-    } else {
-      // TODO: fix the creds
-      client = nforce.createConnection(creds);
-    }
-  });
-
-  after(() => {
-    if (client != undefined) {
-      client.logout();
-    }
-  });
-
-  describe('Client session check', () => {
-    it('should have a valid client session', () => {
-      should.exists(client);
+(checkEnvCredentials() ? describe : describe.skip)(
+  'Integration Test against an actual Salesforce instance',
+  () => {
+    before(() => {
+      let creds = checkEnvCredentials();
+      if (creds == null) {
+        // Can't run integration tests
+        // Mocha.suite.skip();
+      } else {
+        // TODO: fix the creds
+        client = nforce.createConnection(creds);
+      }
     });
-  });
-});
+
+    after(() => {
+      if (client != undefined) {
+        client.logout();
+      }
+    });
+
+    describe('Client session check', () => {
+      it('should have a valid client session', () => {
+        should.exists(client);
+      });
+    });
+  }
+);
 
 /* Checking if the environment has SFDC credentials, so we
  * can run an integration test
