@@ -120,5 +120,5 @@ describe('query', () => {
   afterEach(() => api.reset());
 
   // close mock server
-  after((done) => api.stop(done));
+  after((done) => done());
 });
