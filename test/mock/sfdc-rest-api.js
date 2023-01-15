@@ -107,7 +107,7 @@ const start = (incomingPort, cb) => {
 const stop = (cb) => {
   clearServerStack()
     .catch(console.error)
-    .finally(() => cb);
+    .finally(() => cb());
 };
 
 module.exports = {

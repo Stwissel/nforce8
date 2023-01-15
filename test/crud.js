@@ -141,5 +141,5 @@ describe('api-mock-crud', () => {
   afterEach(() => api.reset());
 
   // close mock server
-  after((done) => done());
+  after((done) => api.stop(done));
 });
