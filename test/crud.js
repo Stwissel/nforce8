@@ -142,7 +142,7 @@ describe('api-mock-crud', () => {
 
   // close mock server
   after((done) => {
-    this.timeout(10000);
+    Mocha.suite.timeout(5000);
     api.stop(done);
   });
 });
