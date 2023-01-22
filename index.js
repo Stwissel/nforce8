@@ -619,7 +619,8 @@ Connection.prototype._queryHandler = function (data) {
   const result = new Promise((resolve, reject) => {
     // Separate function definition
     // since it might get called recursive
-    function handleResponse(resp) {
+    function handleResponse(respCandidate) {
+      let resp = respToJson(respCandidate);
       if (resp.records && resp.records.length > 0) {
         _.each(resp.records, function (r) {
           if (opts.raw) {
@@ -648,6 +649,21 @@ Connection.prototype._queryHandler = function (data) {
   });
 
   return result;
+};
+
+/**
+ * If it hasn't been discovered on the header
+ * try to convert it to object here
+ */
+const respToJson = (respCandidate) => {
+  if (typeof respCandidate === 'object') {
+    return respCandidate;
+  }
+  try {
+    return JSON.parse(respCandidate);
+  } catch (e) {
+    console.error(e, respCandidate);
+  }
 };
 
 /*****************************
