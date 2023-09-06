@@ -1,6 +1,5 @@
 'use strict';
 
-const fetch = require('node-fetch');
 const qs = require('querystring');
 const _ = require('lodash');
 const Record = require('./lib/record');
@@ -41,7 +40,7 @@ const Connection = function (opts) {
   this.timeout = parseInt(this.timeout, 10);
 
   // load plugins
-  if (opts.plugins && _.isArray(opts.plugins)) {
+  if (opts.plugins && Array.isArray(opts.plugins)) {
     opts.plugins.forEach(function (pname) {
       if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
       // clone the object
@@ -148,7 +147,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.scope) {
-    if (_.isArray(opts.scope)) {
+    if (Array.isArray(opts.scope)) {
       urlOpts.scope = opts.scope.join(' ');
     } else {
       urlOpts.scope = opts.scope;
@@ -164,7 +163,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.prompt) {
-    if (_.isArray(opts.prompt)) {
+    if (Array.isArray(opts.prompt)) {
       urlOpts.prompt = opts.prompt.join(' ');
     } else {
       urlOpts.prompt = opts.prompt;
@@ -973,10 +972,10 @@ function unsucessfullResponseCheck(res, self, opts) {
 
   const e = new Error();
   e.statusCode = res.status;
-  const body = util.isJsonResponse(res) ? res.json() : res.txt();
+  const body = util.isJsonResponse(res) ? res.json() : res.text();
 
   // Salesforce sends internal errors as Array
-  if (_.isArray(body) && body.length > 0) {
+  if (Array.isArray(body) && body.length > 0) {
     e.message = body[0].message;
     e.errorCode = body[0].errorCode;
     e.body = body;
