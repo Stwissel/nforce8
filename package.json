@@ -39,7 +39,7 @@
   "main": "index.js",
   "dependencies": {
     "faye": "^1.4.0",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "mime": "^3.0.0",
     "node-fetch": "^2.6.8"
   },
