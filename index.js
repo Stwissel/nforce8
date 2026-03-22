@@ -1,6 +1,5 @@
 'use strict';
 
-const fetch = require('node-fetch');
 const qs = require('querystring');
 const _ = require('lodash');
 const Record = require('./lib/record');

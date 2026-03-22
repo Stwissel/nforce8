@@ -40,8 +40,7 @@
   "dependencies": {
     "faye": "^1.4.1",
     "lodash": "^4.17.23",
-    "mime": "^4.1.0",
-    "node-fetch": "^3.3.2"
+    "mime": "^4.1.0"
   },
   "devDependencies": {
     "@snyk/protect": "^1.1303.1",
