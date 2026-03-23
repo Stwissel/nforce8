@@ -1,1066 +1,1106 @@
 # Code Refactoring Report — nforce8
 
+**Generated**: 2026-03-23
+**Analyzer**: Claude Sonnet 4.6 (Refactoring Expert)
+**Source report**: code-smell-detector-report.md
+**Codebase state**: Node 22+, 9 source files (1,627 LOC), 91 tests passing, 2 runtime dependencies (faye, mime-types)
+
+---
+
 ## Executive Summary
 
-**Project**: nforce8 — Salesforce REST API wrapper for Node.js
-**Report Date**: 2026-03-23
-**Based on**: code-smell-detector-report.md + direct source validation
-**Source Files Examined**: 9 files (1,737 lines)
-**Test Coverage**: 82 tests, all passing
+The nforce8 codebase is in materially better shape following the recent refactoring sprint (lodash/node-fetch removal, Promise anti-pattern elimination, auto-refresh restructuring, bug fixes, dead code removal). The remaining debt splits into three clear tiers:
 
-Three runtime bugs identified by the smell detector have already been applied to the codebase:
-- `util.js:3` — `key.toLowerCase` corrected to `key.toLowerCase()`
-- `util.js:42` — `for...in` corrected to `for...of` on the flavors array
-- `index.js:971` — `res.txt()` corrected to `res.text()`
+1. **One broken feature** (H3 — multipart upload sends no body)
+2. **One correctness bug** (L4 — `previous()` returns wrong value for falsy fields) and **one silent misconfiguration** (M2 — timeout never enforced on API requests)
+3. **Structural/architectural debt** (H1+H2 — God Object and orphaned parallel class) with supporting cleanup items
 
-**One confirmed runtime defect remains unpatched**: the broken auto-refresh promise chain in `unsucessfullResponseCheck` (ARCH-1 below).
+**20 distinct refactoring recommendations** are produced below, organized into four phases. Phase 1 items fix broken or incorrect behavior. Phase 2 items are mechanical quick wins with no design implications. Phase 3 items address design and consistency. Phase 4 is the architectural decomposition.
 
-This report covers **20 refactoring recommendations** across four phases, ordered from safest/highest-impact to most complex/highest-payoff. Each recommendation maps precisely to one or more techniques from the refactoring catalog and includes before/after guidance, risk assessment, and sequencing rationale.
-
----
-
-## Validated Findings by Severity
-
-The smell detector identified 29 issues. Validation against the current source confirms:
-
-| Issue | Status | Action |
-|---|---|---|
-| BUG-1 util.js toLowerCase() | Fixed | Confirmed — no action needed |
-| BUG-2 res.txt() | Fixed | Confirmed — no action needed |
-| MD-6 for...in on array | Fixed | Confirmed — no action needed |
-| ARCH-1 Broken auto-refresh | **OPEN** | Refactoring R-04 required |
-| All other smells | Open | Addressed by R-01 through R-20 |
+**Total recommendations**: 20
+**Phase 1 — Fix Broken/Incorrect Behavior (3 items)**: Must-fix; directly affect callers
+**Phase 2 — Mechanical Quick Wins (8 items)**: Zero to trivial risk; apply in one session
+**Phase 3 — Design and Consistency (6 items)**: Low-medium risk; improve long-term quality
+**Phase 4 — Architectural (3 items)**: High effort; highest long-term impact
 
 ---
 
-## Refactoring Recommendations
+## Validation Notes
+
+All 18 findings from the code-smell-detector were validated against the live source files (commit `ba2fc3b`, branch `develop`). Key confirmations:
+
+- `lib/multipart.js` returns a plain array (`[]`) in `request`-library format. `optionhelper.js:66-68` copies only `opts.body` to `ropts.body` — `opts.multipart` is never assigned to the body. The manual `content-type: multipart/form-data` header is set on line 55 but `fetch` receives a request with no body. **Confirmed broken.**
+- `_apiRequest` (index.js:801-843) calls `optionHelper.getApiRequestOptions(opts)` which copies `opts.timeout` to `ropts.timeout` (optionhelper.js:81-83). Native `fetch` has no `timeout` property — this is silently ignored. `AbortSignal.timeout` is only applied in `_apiAuthRequest` (index.js:767-773). **Confirmed: all non-auth API calls have no timeout.**
+- `Record.prototype.previous` line 147: `if (this._previous[field])` — truthiness check fails for `0`, `''`, `false`, `null`. **Confirmed bug.**
+- `require('querystring')` at index.js:3, used at lines 190, 242, 287, and 461. **Confirmed deprecated module still present.**
+- `new url.URL(opts.uri)` at optionhelper.js:89 uses the `url` module imported at line 4. `URL` is a Node 22 global. **Confirmed unnecessary require.**
+- `lib/record.js:_changed` is initialized as `[]` (line 5), pushed to (line 12, 49), checked with `.includes()` (lines 48, 128, 175). **Confirmed O(n) Set-solvable.**
+- `Record.prototype.hasChanged` lines 122-133: 12-line nested if/else/if for a 3-case predicate. **Confirmed unnecessary complexity.**
+- `Connection.prototype._getOpts` parameter `c` (line 96): every call site in the codebase passes `null` as the second argument. `data.callback = callback` is set at line 115 but `callback` is always `null`. **Confirmed dead code.**
+- `getVersions` line 352: `'http://na1.salesforce.com/services/data/'` — HTTP not HTTPS, hardcoded pod, ignores `instance_url`. **Confirmed.**
+- `fdcstream.js:70`: `this._extensionEnabled = true` inside `replayExtension.incoming`, a plain `function` — `this` refers to `replayExtension`, not `Client`. Property never read anywhere. **Confirmed dead assignment to wrong object.**
+- `'use strict'` absent from `lib/record.js`, `lib/util.js`, `lib/errors.js`, `lib/fdcstream.js`, `lib/multipart.js`. **Confirmed.**
+- `_changed` as `Array` vs `Set`, `self = this` pattern, `_getPayload(bool)` flag argument, mixed class styles — all confirmed as described in the smell report.
 
 ---
 
-### R-01 — Fix Dead Code and Logic Bug in `search()`
+## Phase 1 — Fix Broken or Incorrect Behavior
 
-**Smell**: MD-7 — Dead Code / Logic Bug
-**File**: `index.js`, lines 680–697
-**Technique**: Substitute Algorithm + Remove Dead Code
-**Priority**: High
-**Effort**: 30 minutes
-**Risk**: Low — change is isolated, covered by existing tests
+These three items affect observable behavior for callers. Apply before any other changes.
 
-**Problem**: The `search()` method builds a `recs` array of `Record` instances but resolves with the original raw `resp` instead. The Record-wrapping work is entirely wasted. This is simultaneously dead code (the array is built but never returned) and a behavior bug (the `raw: false` path never returns `Record` objects as documented).
+---
+
+### R01 — Rewrite Multipart Upload to Use FormData
+
+**Smell**: H3 — Broken Feature (Functional Abuser)
+**Refactoring Technique**: Substitute Algorithm (1.9)
+**Priority**: Critical
+**Effort**: Medium (2–3 hours including a test)
+**Risk**: Medium — changes the wire format for Document, Attachment, ContentVersion insert/update
+
+**Problem**
+
+`lib/multipart.js` returns an array of part-descriptor objects in the format used by the deprecated `request` npm library. `index.js` assigns this to `opts.multipart`. `optionhelper.js` detects `opts.multipart` and sets `Content-Type: multipart/form-data` but never assigns the array to `ropts.body`. Native `fetch` therefore sends a multipart-typed request with no body. Even if the array were transferred, `fetch` requires a `FormData` instance, not a plain array.
+
+**Before** (`lib/multipart.js`):
 
 ```javascript
-// BEFORE: index.js lines 685-694
-const result = new Promise((resolve, reject) => {
-  this._apiRequest(opts)
-    .then((resp) => {
-      if (opts.raw || !resp.length) {
-        resolve(resp);
-      } else {
-        let recs = [];
-        resp.forEach(function (r) {
-          recs.push(new Record(r));
-        });
-        resolve(resp);  // BUG: resolves resp, not recs
-      }
-    })
-    .catch((err) => reject(err));
-});
-```
+const multipart = function (opts) {
+  const type = opts.sobject.getType();
+  const entity = type === 'contentversion' ? 'content' : type;
+  const name = type === 'contentversion' ? 'VersionData' : 'Body';
+  const fileName = opts.sobject.getFileName();
+  const isPatch = opts.method === 'PATCH';
+  const multipart = [];
 
-**After (combined with R-05 promise anti-pattern fix)**:
-```javascript
-// AFTER: direct chain, correct resolve target
-Connection.prototype.search = function (data) {
-  const opts = this._getOpts(data, null, {
-    singleProp: 'search',
-    defaults: { raw: false }
+  multipart.push({
+    'content-type': 'application/json',
+    'content-disposition': 'form-data; name="entity_' + entity + '"',
+    body: JSON.stringify(opts.sobject._getPayload(isPatch))
   });
-  opts.resource = '/search';
-  opts.method = 'GET';
-  opts.qs = { q: opts.search };
 
-  return this._apiRequest(opts).then((resp) => {
-    if (opts.raw || !resp.length) return resp;
-    return resp.map((r) => new Record(r));
+  multipart.push({
+    'content-type': mimeTypes.lookup(fileName) || 'application/octet-stream',
+    'content-disposition':
+      'form-data; name="' + name + '"; filename="' + fileName + '"',
+    body: opts.sobject.getBody()
   });
+
+  return multipart;  // <-- array, not FormData
 };
 ```
 
-**Sequencing note**: Combine this with R-05 (Promise anti-pattern elimination) to avoid touching the same method twice.
-
----
-
-### R-02 — Use `Record.setId()` Instead of Bypassing Encapsulation
-
-**Smell**: GRASP-1 — Information Expert Violation / Feature Envy
-**File**: `index.js`, lines 949–961 (`addSObjectAndId` function)
-**Technique**: Move Method (use existing API) + Encapsulate Field
-**Priority**: High
-**Effort**: 15 minutes
-**Risk**: Low
-
-**Problem**: `addSObjectAndId` reaches into `sobject._fields.id` directly, bypassing the `Record.setId()` method that already exists. This violates the Information Expert principle and skips the change-tracking system — after an insert, the `id` field is not reflected in `_changed`.
+**Before** (`lib/optionhelper.js`, lines 54–68):
 
 ```javascript
-// BEFORE: index.js:956-957
-if (body && typeof body === 'object' && body.id) {
-  sobject._fields.id = body.id;  // direct field access, bypasses setId()
+if (opts.multipart) {
+  ropts.headers['content-type'] = 'multipart/form-data';  // manual override
+} else {
+  ropts.headers['content-type'] = 'application/json';
+}
+// ...
+if (opts.body) {
+  ropts.body = opts.body;  // opts.multipart never transferred
 }
 ```
 
+**After** (`lib/multipart.js`):
+
 ```javascript
-// AFTER: use the public API
-if (body && typeof body === 'object' && body.id) {
-  sobject.setId(body.id);  // respects encapsulation and change tracking
+const mimeTypes = require('mime-types');
+
+const multipart = function (opts) {
+  const type = opts.sobject.getType();
+  const entity = type === 'contentversion' ? 'content' : type;
+  const name = type === 'contentversion' ? 'VersionData' : 'Body';
+  const fileName = opts.sobject.getFileName();
+  const isPatch = opts.method === 'PATCH';
+
+  const form = new FormData();
+
+  form.append(
+    'entity_' + entity,
+    new Blob([JSON.stringify(opts.sobject._getPayload(isPatch))], {
+      type: 'application/json'
+    }),
+    'entity'
+  );
+
+  form.append(
+    name,
+    new Blob([opts.sobject.getBody()], {
+      type: mimeTypes.lookup(fileName) || 'application/octet-stream'
+    }),
+    fileName
+  );
+
+  return form;  // FormData instance — fetch sets Content-Type with boundary automatically
+};
+
+module.exports = multipart;
+```
+
+**After** (`lib/optionhelper.js`, multipart section):
+
+```javascript
+// Replace the content-type block and body block with:
+if (opts.multipart) {
+  ropts.body = opts.multipart;  // FormData instance; fetch auto-sets Content-Type + boundary
+} else {
+  ropts.headers['content-type'] = 'application/json';
+  if (opts.body) {
+    ropts.body = opts.body;
+  }
 }
 ```
 
 **Mechanics**:
-1. Open `index.js` and locate the `addSObjectAndId` function (line 949)
-2. Replace `sobject._fields.id = body.id` with `sobject.setId(body.id)`
-3. Run tests to confirm no regression
+1. Rewrite `lib/multipart.js` to construct and return a `FormData` instance.
+2. In `optionhelper.js`, when `opts.multipart` is present, assign it to `ropts.body` and omit the manual `Content-Type` header — `fetch` sets it automatically with the correct boundary.
+3. Remove the now-dead `ropts.headers['content-type'] = 'multipart/form-data'` line.
+4. Add a unit test that calls `insert` with a Document sobject and asserts the request body is a `FormData` instance.
+
+**Risk Mitigation**: The feature is currently completely broken (sends no body). Any correct `FormData` implementation is strictly better. Add an integration test against a sandbox before declaring complete.
 
 ---
 
-### R-03 — Extract Multipart Type Set to a Named Constant
+### R02 — Apply AbortSignal.timeout to `_apiRequest`
 
-**Smell**: LOW-3 — Magic String Literals (duplicated type comparison)
-**File**: `index.js` lines 433–437 and 451–455; `lib/constants.js`
-**Technique**: Replace Magic Number with Symbolic Constant + Consolidate Duplicate Conditional Fragments
+**Smell**: M2 — Inconsistent Timeout Handling (Obfuscator)
+**Refactoring Technique**: Substitute Algorithm (1.9), Remove Parameter (5.3)
 **Priority**: High
-**Effort**: 20 minutes
-**Risk**: Low
+**Effort**: Low (30 minutes)
+**Risk**: Low — adds enforcement that callers already expect
 
-**Problem**: The multipart-eligible type check is duplicated identically in `insert()` and `update()`. Adding a new binary-capable SObject type requires finding and updating both places, and any inconsistency creates a latent bug.
+**Problem**
 
-```javascript
-// BEFORE: duplicated in both insert() and update()
-if (
-  type === 'document' ||
-  type === 'attachment' ||
-  type === 'contentversion'
-) {
-  opts.multipart = multipart(opts);
-}
-```
+`_apiAuthRequest` (index.js:767-773) correctly applies `AbortSignal.timeout(this.timeout)`. `_apiRequest` (index.js:801-843) does not — all CRUD, query, search, and streaming calls are unbounded. Meanwhile, `optionhelper.js:81-83` copies `opts.timeout` to `ropts.timeout`, which `fetch` silently ignores.
 
-**After**:
-
-Step 1 — Add to `lib/constants.js`:
-```javascript
-// Add after existing constants
-const MULTIPART_TYPES = ['document', 'attachment', 'contentversion'];
-```
-
-And add to the `constants` export object:
-```javascript
-MULTIPART_TYPES: MULTIPART_TYPES,
-```
-
-Step 2 — Update `index.js` (import already brings in `CONST`):
-```javascript
-// In both insert() and update():
-if (CONST.MULTIPART_TYPES.includes(type)) {
-  opts.multipart = multipart(opts);
-}
-```
-
----
-
-### R-04 — Fix Broken Auto-Refresh Promise Chain
-
-**Smell**: ARCH-1 — Broken Promise Chain / Functional Abuser
-**File**: `index.js`, lines 963–1014 (`unsucessfullResponseCheck`)
-**Technique**: Replace Error Code with Exception + Separate Query from Modifier
-**Priority**: High
-**Effort**: 2–3 hours
-**Risk**: Medium — touches the core HTTP dispatch path; requires integration test
-
-**Problem**: `unsucessfullResponseCheck` is a synchronous function in a `.then()` chain. When auto-refresh is needed, it launches an async promise but does not return it — the outer chain cannot await it. The function then falls through and returns the original failed `res`, so the request "succeeds" with a failure response. The `autoRefresh: true` feature is silently non-functional.
+**Before** (`_apiRequest`, index.js:801):
 
 ```javascript
-// BEFORE: index.js:963-1014 — auto-refresh fires and forgets
-function unsucessfullResponseCheck(res, self, opts) {
-  if (res.ok) return res;
-  // ...error construction...
-  if (e.errorCode === 'INVALID_SESSION_ID' && self.autoRefresh === true && ...) {
-    // NOT returned — this promise is fire-and-forget
-    Connection.prototype.autoRefreshToken.call(self, opts).then(...);
-  } else {
-    throw e;
-  }
-  return res;  // always returns original failed response
-}
-```
-
-**After** — restructure `_apiRequest` to handle auto-refresh at the call site:
-
-```javascript
-// Rename the check function to be purely a guard (no async side effects)
-function handleFailedResponse(res, self, opts) {
-  if (res.ok) return res;
-
-  const e = new Error();
-  e.statusCode = res.status;
-
-  return (util.isJsonResponse(res) ? res.json() : res.text()).then((body) => {
-    if (Array.isArray(body) && body.length > 0) {
-      e.message = body[0].message;
-      e.errorCode = body[0].errorCode;
-      e.body = body;
-    } else if (typeof body === 'string') {
-      e.message = body;
-      e.errorCode = body;
-      e.body = body;
-    } else {
-      e.message = 'Salesforce returned an unrecognized error ' + res.status;
-      e.body = body;
-    }
-
-    const canAutoRefresh =
-      e.errorCode &&
-      (e.errorCode === 'INVALID_SESSION_ID' || e.errorCode === 'Bad_OAuth_Token') &&
-      self.autoRefresh === true &&
-      (opts.oauth.refresh_token || (self.getUsername() && self.getPassword())) &&
-      !opts._retryCount;
-
-    if (canAutoRefresh) {
-      return Connection.prototype.autoRefreshToken.call(self, opts).then((refreshResult) => {
-        opts._refreshResult = refreshResult;
-        opts._retryCount = 1;
-        return Connection.prototype._apiRequest.call(self, opts);
-      });
-    }
-
-    throw e;
-  });
-}
-
-// In _apiRequest — chain becomes fully async:
 Connection.prototype._apiRequest = function (opts) {
   const self = this;
   const ropts = optionHelper.getApiRequestOptions(opts);
   const uri = optionHelper.getFullUri(ropts);
   const sobject = opts.sobject;
 
-  return fetch(uri, ropts)
-    .then((res) => responseFailureCheck(res))
-    .then((res) => handleFailedResponse(res, self, ropts))
-    .then((res) => (util.isJsonResponse(res) ? res.json() : res.text()))
-    .then((body) => addSObjectAndId(body, sobject));
-};
+  return fetch(uri, ropts)  // <-- no timeout signal
+    .then(...)
 ```
 
-**Mechanics**:
-1. Rename `unsucessfullResponseCheck` to `handleFailedResponse` (fixes the typo, rename method)
-2. Rewrite it to return a Promise by calling `res.json()` / `res.text()` and chaining
-3. Update `_apiRequest` to remove the `new Promise` wrapper and chain directly
-4. Remove the outer `try/catch` wrapper — the native promise chain propagates errors correctly
-5. Add an integration test that exercises the `INVALID_SESSION_ID` auto-refresh path
-
-**Sequencing note**: This subsumes R-05 for the `_apiRequest` method. Do R-04 first for that method.
-
----
-
-### R-05 — Eliminate All Eight Promise Constructor Anti-Patterns
-
-**Smell**: MD-1 — Promise Constructor Anti-Pattern (Deferred Anti-Pattern)
-**Files**: `index.js`, lines 233, 300, 498, 614, 680, 822, 860, 906
-**Technique**: Inline Method + Replace Temp with Query
-**Priority**: High
-**Effort**: 2–3 hours (across all occurrences)
-**Risk**: Low — mechanical transformation with no behavior change
-
-**Problem**: Eight methods wrap already-Promise-returning functions inside `new Promise()`. This is the "explicit promise construction anti-pattern" (also known as the deferred anti-pattern). It swallows synchronous exceptions thrown inside `.then()` handlers and adds an unnecessary microtask tick. It also prevents proper error propagation from async operations.
-
-**Pattern to eliminate**:
-```javascript
-// BEFORE — anti-pattern
-const result = new Promise((resolve, reject) => {
-  this._apiRequest(opts)
-    .then((resp) => { resolve(resp); })
-    .catch((err) => reject(err));
-});
-return result;
-```
+**Before** (`optionhelper.js`, lines 80-84):
 
 ```javascript
-// AFTER — direct chain
-return this._apiRequest(opts)
-  .then((resp) => resp);  // or inline transform if needed
-```
-
-**Affected methods and their specific transforms**:
-
-**`authenticate` (line 233)** — also has a `try/catch` wrapper that was needed for the anti-pattern but is unnecessary with native chaining:
-```javascript
-// AFTER
-return this._apiAuthRequest(opts).then((res) => {
-  const old = { ...opts.oauth };
-  Object.assign(opts.oauth, res);
-  if (opts.assertion) opts.oauth.assertion = opts.assertion;
-  return this._resolveWithRefresh(opts, old);  // see R-06
-});
-```
-
-**`refreshToken` (line 300)**:
-```javascript
-// AFTER
-return this._apiAuthRequest(opts).then((res) => {
-  const old = { ...opts.oauth };
-  Object.assign(opts.oauth, res);
-  if (opts.assertion) opts.oauth.assertion = opts.assertion;
-  return this._resolveWithRefresh(opts, old);  // see R-06
-});
-```
-
-**`getRecord` (line 498)**:
-```javascript
-// AFTER
-return this._apiRequest(opts).then((resp) => {
-  if (!opts.raw) {
-    resp = new Record(resp);
-    resp._reset();
-  }
-  return resp;
-});
-```
-
-**`_queryHandler` (line 614)**:
-```javascript
-// AFTER — self is already available via closure
-return this._apiRequest(opts).then(function handleResponse(respCandidate) {
-  const resp = respToJson(respCandidate);
-  if (resp.records && resp.records.length > 0) {
-    resp.records.forEach((r) => {
-      recs.push(opts.raw ? r : (() => { const rec = new Record(r); rec._reset(); return rec; })());
-    });
-  }
-  if (opts.fetchAll && resp.nextRecordsUrl) {
-    return self.getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
-      .then(handleResponse);
-  }
-  resp.records = recs;
-  return resp;
-});
-```
-
-**`search` (line 680)**: Covered by R-01.
-
-**`autoRefreshToken` (line 822)**:
-```javascript
-// AFTER
-Connection.prototype.autoRefreshToken = function (data) {
-  const opts = this._getOpts(data, null, { defaults: { executeOnRefresh: true } });
-  const refreshOpts = { oauth: opts.oauth, executeOnRefresh: opts.executeOnRefresh };
-
-  if (opts.oauth.refresh_token) {
-    return Connection.prototype.refreshToken.call(this, refreshOpts);
-  }
-  return Connection.prototype.authenticate.call(this, refreshOpts);
-};
-```
-
-**`_apiAuthRequest` (line 860)**: Keep the `try/catch` wrapper only if you need to catch synchronous `fetch` throws — but since Node 22 `fetch` is a global Promise-based API that does not throw synchronously, it can be simplified:
-```javascript
-// AFTER
-Connection.prototype._apiAuthRequest = function (opts) {
-  if (this.timeout) opts.timeout = this.timeout;
-  if (opts.requestOpts) Object.assign(opts, opts.requestOpts);
-  const uri = opts.uri;
-
-  return fetch(uri, opts)
-    .then((res) => {
-      if (!res) throw errors.emptyResponse();
-      if (!res.ok) {
-        const err = new Error('Fetch failed: ' + res.statusText);
-        err.statusCode = res.status;
-        throw err;
-      }
-      return res.json();
-    })
-    .then((jBody) => {
-      if (jBody.access_token && this.mode === 'single') {
-        this.oauth = jBody;
-      }
-      return jBody;
-    });
-};
-```
-
-**`_apiRequest` (line 906)**: Covered by R-04.
-
-**Mechanics (apply per method)**:
-1. Remove the `new Promise((resolve, reject) => {` wrapper and closing `})`
-2. Replace `resolve(x)` calls with `return x`
-3. Replace `.catch((err) => reject(err))` by letting errors propagate naturally
-4. Remove any enclosing `try/catch` added specifically to catch errors for `reject()`
-5. Run tests after each method transformation
-
----
-
-### R-06 — Extract `_resolveWithRefresh` to Eliminate Duplicated onRefresh Block
-
-**Smell**: MD-4 — Duplicated Code (onRefresh callback block)
-**File**: `index.js`, lines 242–257 and 308–320
-**Technique**: Extract Method
-**Priority**: High
-**Effort**: 45 minutes
-**Risk**: Low
-
-**Problem**: The block that calls `self.onRefresh` is copy-pasted identically in both `authenticate()` and `refreshToken()`. The existing `// TODO: remove callback from onRefresh call` comment in the source acknowledges this as design debt. Any change to the onRefresh callback contract requires updating two places.
-
-```javascript
-// BEFORE: identical block in both methods
-if (self.onRefresh && opts.executeOnRefresh === true) {
-  self.onRefresh.call(self, opts.oauth, old, function (err3) {
-    if (err3) {
-      reject(err3);
-    } else {
-      resolve(opts.oauth);
-    }
-  });
-} else {
-  resolve(opts.oauth);
+if (opts.timeout) {
+  ropts.timeout = opts.timeout;  // fetch ignores this
 }
 ```
 
-**After** — extract to a private helper that returns a Promise (fully compatible with R-05):
+**After** (`_apiRequest`):
 
 ```javascript
-// New private method on Connection.prototype
-Connection.prototype._resolveWithRefresh = function (opts, oldOauth) {
-  if (this.onRefresh && opts.executeOnRefresh === true) {
-    return new Promise((resolve, reject) => {
-      this.onRefresh.call(this, opts.oauth, oldOauth, (err) => {
-        if (err) reject(err);
-        else resolve(opts.oauth);
-      });
-    });
+Connection.prototype._apiRequest = function (opts) {
+  const self = this;
+  const ropts = optionHelper.getApiRequestOptions(opts);
+
+  if (this.timeout) {
+    const timeoutSignal = AbortSignal.timeout(this.timeout);
+    ropts.signal =
+      ropts.signal !== undefined
+        ? AbortSignal.any([timeoutSignal, ropts.signal])
+        : timeoutSignal;
   }
-  return Promise.resolve(opts.oauth);
-};
+
+  const uri = optionHelper.getFullUri(ropts);
+  const sobject = opts.sobject;
+
+  return fetch(uri, ropts)
+    .then(...)
 ```
 
-Both `authenticate` and `refreshToken` then call:
-```javascript
-return this._resolveWithRefresh(opts, old);
-```
-
-**Note**: This is the one location where `new Promise()` remains justified — it wraps a legacy callback API (`onRefresh`) that the TODO comment acknowledges should eventually be promisified. Once `onRefresh` is updated to return a Promise, this wrapper can be removed.
-
----
-
-### R-07 — Parameterize the Four URL Helper Methods
-
-**Smell**: MD-2 — Duplicated Code (URL construction pattern)
-**File**: `index.js`, lines 707–747
-**Technique**: Parameterize Method
-**Priority**: Medium
-**Effort**: 45 minutes
-**Risk**: Low — all four methods delegate to `_apiRequest`; public API preserved
-
-**Problem**: `getUrl`, `putUrl`, `postUrl`, and `deleteUrl` are structurally identical, differing only in the HTTP method and whether the body is serialized.
-
-```javascript
-// BEFORE: four nearly-identical methods
-Connection.prototype.getUrl = function (data) {
-  let opts = this._getOpts(data, null, { singleProp: 'url' });
-  opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-  opts.method = 'GET';
-  return this._apiRequest(opts);
-};
-// putUrl, postUrl, deleteUrl follow the same pattern
-```
-
-**After** — extract a private helper, keep public API unchanged:
-
-```javascript
-// Private helper
-Connection.prototype._urlRequest = function (data, method) {
-  const opts = this._getOpts(data, null, { singleProp: 'url' });
-  opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-  opts.method = method;
-  if (opts.body && (method === 'PUT' || method === 'POST')) {
-    opts.body = JSON.stringify(opts.body);
-  }
-  return this._apiRequest(opts);
-};
-
-// Public methods become thin wrappers — same external interface
-Connection.prototype.getUrl = function (data) { return this._urlRequest(data, 'GET'); };
-Connection.prototype.putUrl = function (data) { return this._urlRequest(data, 'PUT'); };
-Connection.prototype.postUrl = function (data) { return this._urlRequest(data, 'POST'); };
-Connection.prototype.deleteUrl = function (data) { return this._urlRequest(data, 'DELETE'); };
-```
+**After** (`optionhelper.js`): Remove the `opts.timeout` → `ropts.timeout` block entirely (lines 80-84).
 
 **Mechanics**:
-1. Write the `_urlRequest` helper
-2. Replace each public method body with the one-liner delegation
-3. Run tests — the public interface is identical so all existing tests pass unchanged
+1. Copy the `AbortSignal.timeout` block from `_apiAuthRequest` verbatim into `_apiRequest`, placed after `getApiRequestOptions` returns.
+2. Remove `ropts.timeout = opts.timeout` from `optionhelper.js`.
+3. The existing timeout test in `test/connection.js` (if present) should now also cover `_apiRequest`.
 
 ---
 
-### R-08 — Parameterize the Four Blob Retrieval Methods
+### R03 — Fix `previous()` Falsy Value Bug
 
-**Smell**: MD-3 — Duplicated Code (blob method pattern)
-**File**: `index.js`, lines 534–568
-**Technique**: Parameterize Method
-**Priority**: Medium
-**Effort**: 30 minutes
-**Risk**: Low
+**Smell**: L4 — Truthiness Bug (Obfuscator)
+**Refactoring Technique**: Replace Nested Conditional with Guard Clauses (4.5), Introduce Assertion (4.8)
+**Priority**: High
+**Effort**: Low (5 minutes)
+**Risk**: Low — behavior change is a bug fix; previous value of `0`, `''`, `false`, or `null` now correctly returned
 
-**Problem**: `getAttachmentBody`, `getDocumentBody`, `getContentVersionBody`, and `getContentVersionData` are structurally identical — only the resource path differs.
+**Problem**
+
+`Record.prototype.previous` (record.js:147) uses `if (this._previous[field])` — a truthiness check. If a field's previous value was `0`, `''`, `false`, or `null`, the method incorrectly returns `undefined`.
+
+**Before**:
 
 ```javascript
-// BEFORE: pattern repeated four times
-Connection.prototype.getAttachmentBody = function (data) {
-  let opts = this._getOpts(data);
-  let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = '/sobjects/attachment/' + id + '/body';
-  opts.method = 'GET';
-  opts.blob = true;
-  return this._apiRequest(opts);
+Record.prototype.previous = function (field) {
+  if (field) field = field.toLowerCase();
+  if (typeof field === 'string') {
+    if (this._previous[field]) {      // BUG: fails for 0, '', false, null
+      return this._previous[field];
+    } else {
+      return;
+    }
+  } else {
+    return this._previous || {};
+  }
 };
 ```
 
 **After**:
 
 ```javascript
-// Private helper
-Connection.prototype._getBlobResource = function (data, sobjectType, suffix) {
-  const opts = this._getOpts(data);
-  const id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = '/sobjects/' + sobjectType + '/' + id + '/' + suffix;
-  opts.method = 'GET';
-  opts.blob = true;
-  return this._apiRequest(opts);
-};
-
-// Public methods delegate
-Connection.prototype.getAttachmentBody = function (data) {
-  return this._getBlobResource(data, 'attachment', 'body');
-};
-Connection.prototype.getDocumentBody = function (data) {
-  return this._getBlobResource(data, 'document', 'body');
-};
-Connection.prototype.getContentVersionBody = function (data) {
-  return this._getBlobResource(data, 'contentversion', 'body');
-};
-Connection.prototype.getContentVersionData = function (data) {
-  return this._getBlobResource(data, 'contentversion', 'versiondata');
+Record.prototype.previous = function (field) {
+  if (field) field = field.toLowerCase();
+  if (typeof field === 'string') {
+    if (field in this._previous) {    // presence check, not truthiness check
+      return this._previous[field];
+    }
+    return undefined;
+  }
+  return this._previous || {};
 };
 ```
 
+**Mechanics**:
+1. Change `if (this._previous[field])` to `if (field in this._previous)`.
+2. Add a test: set a field to `0`, change it, confirm `record.previous('field')` returns `0`.
+
 ---
 
-### R-09 — Replace `apexRest` Direct `data` Access with `opts`
+## Phase 2 — Mechanical Quick Wins
 
-**Smell**: MD-9 — Inconsistent Style / Potential Null Dereference
-**File**: `index.js`, line 761
-**Technique**: Rename Method (use correct variable) + Inline Temp
+These items are mechanical, zero-risk, and do not change observable behavior. Apply in any order in a single session.
+
+---
+
+### R04 — Replace Deprecated `querystring` with `URLSearchParams`
+
+**Smell**: M4 — Deprecated Module (Incomplete Library Class)
+**Refactoring Technique**: Substitute Algorithm (1.9), Introduce Local Extension (2.8)
 **Priority**: Medium
-**Effort**: 10 minutes
-**Risk**: Low
+**Effort**: Low (20 minutes)
+**Risk**: Low — `URLSearchParams.toString()` is functionally equivalent for all three call sites
 
-**Problem**: `apexRest` calls `this._getOpts(data, null, { singleProp: 'uri' })` which normalizes input into `opts`, but then accesses `data.uri` directly instead of `opts.uri`. If `data` is passed as a plain string (which `singleProp` is designed to support), `data.uri` is `undefined` and `.substring()` throws.
+**Problem**
 
-```javascript
-// BEFORE
-Connection.prototype.apexRest = function (data) {
-  let opts = this._getOpts(data, null, { singleProp: 'uri' });
-  opts.uri =
-    opts.oauth.instance_url +
-    '/services/apexrest/' +
-    (data.uri.substring(0, 1) === '/'   // accesses 'data', not 'opts'
-      ? data.uri.substring(1)
-      : data.uri);
-```
+`index.js:3` imports the deprecated `querystring` module. Node.js documentation marks it superseded by the WHATWG `URLSearchParams` API. It is used at four locations: lines 190, 242, 287 (OAuth flows), and line 461 (`getRecord` fields query string).
+
+**Before**:
 
 ```javascript
-// AFTER
-Connection.prototype.apexRest = function (data) {
-  const opts = this._getOpts(data, null, { singleProp: 'uri' });
-  const relativeUri = opts.uri.startsWith('/') ? opts.uri.slice(1) : opts.uri;
-  opts.uri = opts.oauth.instance_url + '/services/apexrest/' + relativeUri;
-  opts.method = opts.method || 'GET';
-  if (opts.urlParams) opts.qs = opts.urlParams;
-  return this._apiRequest(opts);
-};
+const qs = require('querystring');
+// ...
+return endpoint + '?' + qs.stringify(urlOpts);          // line 190
+// ...
+opts.body = qs.stringify(bopts);                        // line 242
+// ...
+opts.body = qs.stringify(refreshOpts);                  // line 287
+// ...
+opts.resource += '?' + qs.stringify({ fields: opts.fields.join() });  // line 461
 ```
+
+**After**:
+
+```javascript
+// Remove: const qs = require('querystring');
+// ...
+return endpoint + '?' + new URLSearchParams(urlOpts).toString();
+// ...
+opts.body = new URLSearchParams(bopts).toString();
+// ...
+opts.body = new URLSearchParams(refreshOpts).toString();
+// ...
+opts.resource += '?' + new URLSearchParams({ fields: opts.fields.join() }).toString();
+```
+
+**Mechanics**:
+1. Delete `const qs = require('querystring')` from line 3.
+2. Replace all four `qs.stringify(x)` calls with `new URLSearchParams(x).toString()`.
+3. Run `npm test` — all 91 tests should still pass.
 
 ---
 
-### R-10 — Fix `_queryHandler` Double `_getOpts` Call
+### R05 — Remove Unnecessary `url` Module Import
 
-**Smell**: MD-8 — Redundant Processing
-**File**: `index.js`, lines 598–601
-**Technique**: Inline Temp
-**Priority**: Medium
-**Effort**: 15 minutes
-**Risk**: Low
-
-**Problem**: `query()` and `queryAll()` both call `this._getOpts(data, ...)` and pass the result as `data` to `_queryHandler`. `_queryHandler` then calls `this._getOpts(data)` again on the already-processed opts object. This is wasteful and creates a maintenance trap.
-
-```javascript
-// BEFORE: _queryHandler re-processes already-processed opts
-Connection.prototype._queryHandler = function (data) {
-  const opts = this._getOpts(data);  // data is already an opts object
-```
-
-**After** — remove the redundant call:
-
-```javascript
-// AFTER: _queryHandler receives opts directly
-Connection.prototype._queryHandler = function (opts) {
-  const self = this;
-  const recs = [];
-
-  opts.method = 'GET';
-  opts.resource = '/query';
-  if (opts.includeDeleted) opts.resource += 'All';
-  opts.qs = { q: opts.query };
-
-  return this._apiRequest(opts).then(function handleResponse(respCandidate) {
-    // ... (see R-05 for promise chain)
-  });
-};
-```
-
-Callers (`query()` and `queryAll()`) are already passing `opts`, so no change needed there.
-
----
-
-### R-11 — Normalize `==` to `===` for Environment Comparisons
-
-**Smell**: MD-5 — Inconsistent Style / Obfuscator
-**File**: `index.js`, lines 184, 197, 271; `lib/fdcstream.js`, line 69
-**Technique**: Substitute Algorithm (style normalization)
-**Priority**: Medium
-**Effort**: 10 minutes
-**Risk**: Low — validated strings; no runtime difference, but avoids future surprises
-
-```javascript
-// BEFORE: index.js:184
-} else if (self.environment == 'sandbox') {
-
-// AFTER
-} else if (self.environment === 'sandbox') {
-```
-
-Same pattern for lines 197 and 271 in `index.js`, and line 69 in `lib/fdcstream.js`:
-```javascript
-// BEFORE: fdcstream.js:69
-if (message.ext && message.ext['replay'] == true) {
-
-// AFTER
-if (message.ext && message.ext['replay'] === true) {
-```
-
----
-
-### R-12 — Standardize `opts` Variable Declaration to `const`
-
-**Smell**: MD-10 — Inconsistent Style
-**File**: `index.js`, throughout
-**Technique**: Substitute Algorithm (style normalization)
+**Smell**: L6 — Dead Code / Unnecessary Import (Dispensable)
+**Refactoring Technique**: Inline Method (1.2)
 **Priority**: Low
-**Effort**: 30 minutes
-**Risk**: Low
+**Effort**: Low (5 minutes)
+**Risk**: None
 
-**Problem**: Approximately half the methods use `let opts` and half use `const opts`. Since `opts` is never reassigned (only mutated via property addition), `const` is semantically correct everywhere. Inconsistency makes the codebase harder to read and creates false impressions about reassignment intent.
+**Problem**
 
-**Mechanics**: Replace all `let opts = this._getOpts(...)` with `const opts = this._getOpts(...)` throughout `index.js`. This is a safe, mechanical change that IDEs can perform automatically.
+`optionhelper.js:4` imports `const url = require('url')` and uses it only as `new url.URL(opts.uri)` on line 89. `URL` is a global in Node.js 22 — no import needed.
+
+**Before**:
+
+```javascript
+const url = require('url');
+// ...
+let result = new url.URL(opts.uri);
+```
+
+**After**:
+
+```javascript
+// (remove require line)
+// ...
+let result = new URL(opts.uri);
+```
+
+**Mechanics**: Delete line 4, change `url.URL` to `URL` on line 89.
 
 ---
 
-### R-13 — Fix `getVersions` Hardcoded URL
+### R06 — Replace `_changed` Array with `Set` in `record.js`
 
-**Smell**: MD-11 — Magic Number / Hardcoded URL / Wrong Protocol
-**File**: `index.js`, line 377
-**Technique**: Replace Magic Number with Symbolic Constant + Move Method
+**Smell**: M8 — Primitive Obsession / O(n) Membership Tests (Functional Abuser)
+**Refactoring Technique**: Replace Data Value with Object (3.2), Self Encapsulate Field (3.1)
 **Priority**: Medium
-**Effort**: 20 minutes
-**Risk**: Low — currently broken for most orgs anyway
+**Effort**: Low (30 minutes)
+**Risk**: Low — behavior-preserving; `Set` iteration order is insertion order, same as `Array`
 
-**Problem**: `getVersions` uses `http://na1.salesforce.com/services/data/` — an insecure protocol pointing to a specific legacy pod. This method is effectively non-functional for most Salesforce orgs.
+**Problem**
+
+`Record._changed` is an `Array` used exclusively as a membership set. `Array.includes()` is O(n). Every `set()` call checks `_changed.includes(key)` inside a loop over incoming fields — quadratic for records with many fields. A `Set` provides O(1) `has()`, automatic deduplication (eliminating the guard on line 48), and equivalent iteration.
+
+**Before**:
 
 ```javascript
-// BEFORE
+// Constructor
+this._changed = [];
+// ...
+
+// In constructor body (reduce callback):
+self._changed.push(key);
+
+// In set():
+if (!self._changed.includes(key)) {  // O(n) guard unnecessary with Set
+  self._changed.push(key);
+}
+
+// In _reset():
+this._changed = [];
+
+// In hasChanged():
+if (!this._changed || this._changed.length === 0) {
+// ...
+if (this._changed.includes(field.toLowerCase())) {
+
+// In changed():
+this._changed.forEach(function (field) { ... });
+
+// In _getPayload():
+if (changedOnly && !self._changed.includes(key)) return result;
+```
+
+**After**:
+
+```javascript
+// Constructor
+this._changed = new Set();
+// ...
+
+// In constructor body (reduce callback):
+self._changed.add(key);
+
+// In set():
+// No guard needed — Set.add() is idempotent
+self._changed.add(key);
+
+// In _reset():
+this._changed = new Set();
+
+// In hasChanged():
+if (!this._changed || this._changed.size === 0) {
+// ...
+if (this._changed.has(field.toLowerCase())) {
+
+// In changed():
+this._changed.forEach(function (field) { ... });  // unchanged — Set has forEach
+
+// In _getPayload():
+if (changedOnly && !self._changed.has(key)) return result;
+```
+
+**Mechanics**:
+1. Change all `= []` initializations of `_changed` to `= new Set()`.
+2. Replace `.push(key)` with `.add(key)`.
+3. Remove the `!self._changed.includes(key)` guard in `set()` — `Set.add()` is idempotent.
+4. Replace `.length` checks with `.size` checks.
+5. Replace `.includes()` calls with `.has()` calls.
+6. Run `npm test` — the `_changed` data structure is internal; all 91 tests should pass unchanged.
+
+---
+
+### R07 — Simplify `hasChanged` Control Flow
+
+**Smell**: L2 — Conditional Complexity (Obfuscator)
+**Refactoring Technique**: Replace Nested Conditional with Guard Clauses (4.5), Consolidate Conditional Expression (4.2)
+**Priority**: Low
+**Effort**: Low (5 minutes)
+**Risk**: None — purely cosmetic restructuring of identical logic
+
+**Problem**
+
+`Record.prototype.hasChanged` (record.js:122-133) uses a 12-line nested if/else-if/else chain for a simple 3-case predicate. The trailing `return false` is dead code (the `else if` already covers all remaining cases).
+
+**Before**:
+
+```javascript
+Record.prototype.hasChanged = function (field) {
+  if (!this._changed || this._changed.length === 0) {
+    return false;
+  } else if (!field) {
+    return true;
+  } else {
+    if (this._changed.includes(field.toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+};
+```
+
+**After** (compatible with R06's Set change):
+
+```javascript
+Record.prototype.hasChanged = function (field) {
+  if (!this._changed || this._changed.size === 0) return false;
+  if (!field) return true;
+  return this._changed.has(field.toLowerCase());
+};
+```
+
+**Note**: Apply after R06 (Set migration) so `.size` and `.has()` are already correct.
+
+---
+
+### R08 — Fix `getVersions` Magic HTTP URL
+
+**Smell**: M5 — Magic String / Hardcoded Dependency (Lexical Abuser)
+**Refactoring Technique**: Replace Magic Number with Symbolic Constant (3.11), Parameterize Method (5.5)
+**Priority**: Medium
+**Effort**: Low (10 minutes)
+**Risk**: Low — corrects wrong behavior for all non-na1 orgs
+
+**Problem**
+
+`Connection.prototype.getVersions` (index.js:352) hardcodes `'http://na1.salesforce.com/services/data/'` — HTTP (not HTTPS), wrong pod for every org except na1, bypasses `instance_url`.
+
+**Before**:
+
+```javascript
 Connection.prototype.getVersions = function () {
   let opts = this._getOpts(null);
-  opts.uri = 'http://na1.salesforce.com/services/data/';  // HTTP, hardcoded pod
+  opts.uri = 'http://na1.salesforce.com/services/data/';
   opts.method = 'GET';
   return this._apiAuthRequest(opts);
 };
 ```
 
+**After**:
+
 ```javascript
-// AFTER: use instance_url from connection options (requires oauth to be set)
 Connection.prototype.getVersions = function (data) {
   const opts = this._getOpts(data);
-  opts.uri = opts.oauth.instance_url + '/services/data/';
+  // Use the authenticated org's instance URL if oauth is present;
+  // fall back to the configured login URI base for pre-auth discovery.
+  if (opts.oauth && opts.oauth.instance_url) {
+    opts.uri = opts.oauth.instance_url + '/services/data/';
+  } else {
+    opts.uri = this.loginUri.replace('/oauth2/token', '/data/');
+  }
   opts.method = 'GET';
   return this._apiAuthRequest(opts);
 };
 ```
 
-**Note**: If the intent is to get versions without authentication (a public endpoint), the correct URL is `https://login.salesforce.com/services/data/` (production) or `https://test.salesforce.com/services/data/` (sandbox). Add a constant to `constants.js`:
-```javascript
-const VERSIONS_URI = 'https://login.salesforce.com/services/data/';
-const TEST_VERSIONS_URI = 'https://test.salesforce.com/services/data/';
-```
+**Mechanics**:
+1. Replace the hardcoded string with the two-branch logic above.
+2. Add a test asserting the URI uses `opts.oauth.instance_url` when oauth is present.
 
 ---
 
-### R-14 — Remove Redundant `toLowerCase()` in `Record` Constructor
+### R09 — Remove Dead Callback Scaffolding from `_getOpts`
 
-**Smell**: LOW-6 — Redundant Code
-**File**: `lib/record.js`, lines 9 and 11
-**Technique**: Inline Temp
+**Smell**: L3 — Dead Code (Dispensable)
+**Refactoring Technique**: Remove Parameter (5.3), Inline Method (1.2)
 **Priority**: Low
-**Effort**: 5 minutes
-**Risk**: Low
+**Effort**: Low (20 minutes)
+**Risk**: Low — confirmed no call site passes a non-null second argument
+
+**Problem**
+
+`Connection.prototype._getOpts(d, c, opts)` captures `c` as `callback` and stores it at `data.callback`. Every call site in the codebase passes `null` as the second argument. The entire `if (util.isFunction(d))` branch at line 101 (which would route `d` as callback) is also unreachable — callers always pass an object or `null` as the first argument. `data.callback` is never read anywhere.
+
+**Before**:
 
 ```javascript
-// BEFORE: key.toLowerCase() called twice
-this._fields = Object.entries(data).reduce(function (result, [key, val]) {
-  key = key.toLowerCase();           // line 9: lowercased here
-  if (key !== 'attributes' && key !== 'attachment') {
-    result[key.toLowerCase()] = val; // line 11: lowercased AGAIN — redundant
+Connection.prototype._getOpts = function (d, c, opts = {}) {
+  let data = {};
+  let callback;
+  let dataTransfer;
+
+  if (util.isFunction(d)) {
+    callback = d;
+    dataTransfer = null;
+  } else {
+    callback = c;
+    dataTransfer = d;
+  }
+
+  if (opts.singleProp && dataTransfer && !util.isObject(dataTransfer)) {
+    data[opts.singleProp] = dataTransfer;
+  } else if (util.isObject(dataTransfer)) {
+    data = dataTransfer;
+  }
+
+  data.callback = callback;  // always null
+
+  if (this.mode === 'single' && !data.oauth) {
+    data.oauth = this.oauth;
+  }
+  // ...
 ```
 
+**After**:
+
 ```javascript
-// AFTER: single toLowerCase call
+Connection.prototype._getOpts = function (d, opts = {}) {
+  let data = {};
+
+  if (opts.singleProp && d && !util.isObject(d)) {
+    data[opts.singleProp] = d;
+  } else if (util.isObject(d)) {
+    data = d;
+  }
+
+  if (this.mode === 'single' && !data.oauth) {
+    data.oauth = this.oauth;
+  }
+  // ...
+```
+
+**Mechanics**:
+1. Remove the `c` parameter, `callback` variable, `dataTransfer` alias, and `data.callback = callback` assignment.
+2. Rename `dataTransfer` usages to `d` directly.
+3. Update every `_getOpts(data, null, {...})` call site to `_getOpts(data, {...})` (remove the `null` argument).
+4. Update every `_getOpts(data, null)` to `_getOpts(data)`.
+5. Run `npm test`.
+
+---
+
+### R10 — Add `'use strict'` to All Five Missing Files
+
+**Smell**: L7 — Inconsistent Strict Mode (Lexical Abuser)
+**Refactoring Technique**: Introduce Assertion (4.8) — enforces implicit assumptions explicitly
+**Priority**: Low
+**Effort**: Low (5 minutes)
+**Risk**: None for well-written code; if any file used `with`, `arguments.caller`, or similar deprecated constructs they would error — but none do
+
+**Problem**
+
+`'use strict'` is present in `index.js`, `lib/constants.js`, and `lib/optionhelper.js` but absent from `lib/record.js`, `lib/util.js`, `lib/errors.js`, `lib/fdcstream.js`, and `lib/multipart.js`. CommonJS modules are not strict by default.
+
+**After**: Add `'use strict';` as the first line of each of the five files.
+
+---
+
+### R11 — Remove `self = this` Pattern Where Unnecessary
+
+**Smell**: M3 — Inconsistent `self` Alias (Lexical Abuser)
+**Refactoring Technique**: Substitute Algorithm (1.9) — replace manual `this` binding with lexical arrow functions
+**Priority**: Low
+**Effort**: Medium (1–2 hours across all files)
+**Risk**: Low — mechanical arrow-function conversion
+
+**Problem**
+
+`self = this` is a pre-ES6 pattern for preserving `this` context inside nested `function` callbacks. Arrow functions bind `this` lexically and make `self` unnecessary. The codebase mixes both patterns inconsistently.
+
+Specific cases where `self` is unnecessary:
+
+**`index.js:775`** (`_apiAuthRequest`):
+```javascript
+const self = this;
+// ...
+.then((jBody) => {
+  if (jBody.access_token && self.mode === 'single') {   // <-- arrow function; `this` works
+    self.oauth = jBody;
+  }
+```
+`self` is used only inside an arrow function `.then()` callback — `this` is identical. Remove `const self = this` and replace `self.` with `this.`.
+
+**`index.js:132`** (`getAuthUri`):
+```javascript
+const self = this;
+// ...
+client_id: self.clientId,      // uses self
+// ...
+endpoint = this.testAuthEndpoint;  // uses this directly — inconsistent
+```
+Replace `self.clientId`, `self.redirectUri` with `this.clientId`, `this.redirectUri`. Remove `const self = this`.
+
+**`index.js:206`** (`authenticate`):
+`const self = this` used for `self.clientId`, `self.clientSecret`, `self.redirectUri`, `self._resolveWithRefresh`. All are inside regular function scope, not nested callbacks. Convert to `this.` directly.
+
+**`lib/record.js`**:
+The `Record` constructor, `set()`, `changed()`, and `_getPayload()` use `self = this` inside nested `function` callbacks passed to `reduce` and `forEach`. Convert these to arrow functions:
+```javascript
+// Before:
 this._fields = Object.entries(data).reduce(function (result, [key, val]) {
   key = key.toLowerCase();
   if (key !== 'attributes' && key !== 'attachment') {
-    result[key] = val;  // key is already lowercase
+    result[key] = val;
+    self._changed.add(key);       // self needed because function callback
+// ...
+
+// After:
+this._fields = Object.entries(data).reduce((result, [key, val]) => {
+  key = key.toLowerCase();
+  if (key !== 'attributes' && key !== 'attachment') {
+    result[key] = val;
+    this._changed.add(key);       // this works in arrow function
+// ...
 ```
+
+**`lib/fdcstream.js`**: `self` is genuinely needed in `Subscription` constructor (the `function (d)` callback for subscribe, and the `.callback`/`.errback` handlers) and in `Client` constructor (the `transport:up`/`transport:down` handlers). These cannot be trivially converted to arrow functions because the Faye API requires standard functions in some positions. Leave `fdcstream.js` `self` aliases unchanged.
+
+**Mechanics**:
+1. `index.js`: Remove `const self = this` from `_apiAuthRequest`, `getAuthUri`, `authenticate`, `refreshToken`. Replace remaining `self.` references with `this.` in those methods.
+2. `record.js`: Convert `reduce`, `forEach`, and similar inline callbacks from `function` to arrow functions. Remove `const self = this` and `let self = this` declarations. Remove `let self = this` from `Record` constructor, `set()`, and `changed()`.
+3. Verify tests still pass after each file.
 
 ---
 
-### R-15 — Remove Unused `self` Variables
+## Phase 3 — Design and Consistency
 
-**Smell**: LOW-7 — Dead Code / Unnecessary ES5 Closure Pattern
-**File**: `index.js`, lines 773 and 785; `lib/record.js` line 2, `lib/fdcstream.js` line 7
-**Technique**: Inline Temp + Remove Assignments to Parameters
-**Priority**: Low
-**Effort**: 15 minutes
-**Risk**: Low
-
-In `createStreamClient` and `subscribe`, `let self = this` is assigned but `this` is never reassigned — these are not nested callbacks that require a closure over `this`. Arrow functions or direct `this` access suffice.
-
-```javascript
-// BEFORE: index.js:773-774
-Connection.prototype.createStreamClient = function (data) {
-  let self = this;
-  let opts = this._getOpts(data, null, {
-    defaults: {
-      apiVersion: self.apiVersion,  // self.apiVersion === this.apiVersion
-```
-
-```javascript
-// AFTER
-Connection.prototype.createStreamClient = function (data) {
-  const opts = this._getOpts(data, null, {
-    defaults: {
-      apiVersion: this.apiVersion,
-```
-
-Same pattern in `subscribe` at line 785: remove `let self = this`, replace `self.apiVersion` with `this.apiVersion`.
-
-**Note**: `self` in `lib/record.js` is legitimately needed for the `forEach` callback closure. `self` in `lib/fdcstream.js` is needed for Faye event handler callbacks. Only the `createStreamClient` and `subscribe` occurrences in `index.js` are unnecessary.
+These items improve design quality and resolve named code smells without restructuring the major modules.
 
 ---
 
-### R-16 — Fix Boolean Simplification in `multipart.js`
+### R12 — Split `_getPayload(bool)` into Two Named Methods
 
-**Smell**: LOW — Unnecessary Ternary for Boolean Assignment
-**File**: `lib/multipart.js`, line 8
-**Technique**: Substitute Algorithm
-**Priority**: Low
-**Effort**: 5 minutes
-**Risk**: Low
-
-```javascript
-// BEFORE
-let isPatch = opts.method === 'PATCH' ? true : false;
-
-// AFTER
-const isPatch = opts.method === 'PATCH';
-```
-
----
-
-### R-17 — Tighten API Version Validation Regex
-
-**Smell**: LOW-9 — Complicated Boolean Expression / Incorrect Validation
-**File**: `lib/connection.js`, lines 41–43
-**Technique**: Substitute Algorithm
-**Priority**: Low
-**Effort**: 10 minutes
-**Risk**: Low
-
-**Problem**: The current `apiMatch` function accepts both `v54` and `v54.0` as valid API versions, but the Salesforce convention is always `vNN.0`. The numeric check via `Number.isInteger(Number(...))` has this gap.
-
-```javascript
-// BEFORE
-const apiMatch = (apiVersion) =>
-  apiVersion.substring(0, 1) === 'v' &&
-  Number.isInteger(Number(apiVersion.substring(1)));
-```
-
-```javascript
-// AFTER: explicit regex enforces vNN.0 format exactly
-const apiMatch = (apiVersion) => /^v\d+\.0$/.test(apiVersion);
-```
-
----
-
-### R-18 — Remove Dead Error Factories from `errors.js`
-
-**Smell**: LOW-8 — Dead Code / Incomplete Library Class
-**File**: `lib/errors.js`
-**Technique**: Remove Dead Code + Extract Subclass (future)
-**Priority**: Low
-**Effort**: 20 minutes (removal) / 2 hours (full subclass promotion)
-**Risk**: Low
-
-**Problem**: `nonJsonResponse` and `invalidJson` are defined in `errors.js` but never called anywhere in the source. They represent unfinished error handling.
-
-**Immediate action** (safe):
-1. Verify with a global search that `nonJsonResponse` and `invalidJson` are indeed unused
-2. Remove the two dead factory functions from `errors.js`
-3. Update `module.exports` accordingly
-
-**Future improvement** (separate ticket): Convert the remaining `emptyResponse` factory and all inline `new Error()` calls to proper Error subclasses:
-
-```javascript
-// Future: proper Error subclasses enable instanceof checks and structured error data
-class SalesforceError extends Error {
-  constructor(message, statusCode, errorCode, body) {
-    super(message);
-    this.name = 'SalesforceError';
-    this.statusCode = statusCode;
-    this.errorCode = errorCode;
-    this.body = body;
-  }
-}
-
-class EmptyResponseError extends SalesforceError {
-  constructor() {
-    super('Unexpected empty response', null, 'EMPTY_RESPONSE', null);
-    this.name = 'EmptyResponseError';
-  }
-}
-```
-
----
-
-### R-19 — Resolve Dead ES6 Connection Class in `lib/connection.js`
-
-**Smell**: SRP-2 — Dead Code / Abandoned Architectural Refactoring
-**File**: `lib/connection.js`, lines 5–18
-**Technique**: Inline Class (immediate) or Extract Superclass (long-term via R-20)
+**Smell**: M6 — Flag Argument / Boolean Blindness (Bloater)
+**Refactoring Technique**: Replace Parameter with Explicit Methods (5.6)
 **Priority**: Medium
-**Effort**: 30 minutes (dead code removal) / see R-20 for full migration
-**Risk**: Low (removal) / High (migration)
+**Effort**: Low (30 minutes)
+**Risk**: Low — purely additive; old method can be removed after all call sites updated
 
-**Problem**: `lib/connection.js` exports a `Connection` ES6 class that is never instantiated. `index.js` imports only `validateConnectionOptions` from it. The `Connection` class body (`oauth`, `username`, `password`, `securityToken` fields plus constructor) is dead code that misleads contributors.
+**Problem**
 
-**Immediate action**: Remove the dead class from `lib/connection.js`, retaining only the validation helpers:
+`Record.prototype._getPayload(changedOnly)` takes a boolean flag that controls whether all fields or only changed fields are returned. Call sites (`false`, `true`, `false`, and the `isPatch` variable in multipart.js) have no intrinsic meaning without reading the method definition.
+
+**Before**:
 
 ```javascript
-// lib/connection.js — after cleanup
-'use strict';
-const CONST = require('./constants');
-const util = require('./util');
-
-const optionTest = (testFunction, testVar, errorText) => { ... };
-const optionTestIfPresent = (testFunction, testVar, errorText) => { ... };
-const stringAndArray = (arr) => { ... };
-const apiMatch = (apiVersion) => /^v\d+\.0$/.test(apiVersion);  // see R-17
-const validateConnectionOptions = (con) => { ... };
-
-module.exports = { validateConnectionOptions };
-// Remove: Connection class export (it was never used)
+opts.body = JSON.stringify(opts.sobject._getPayload(false));  // insert — all fields
+opts.body = JSON.stringify(opts.sobject._getPayload(true));   // update — changed only
+opts.body = JSON.stringify(opts.sobject._getPayload(false));  // upsert — all fields
+body: JSON.stringify(opts.sobject._getPayload(isPatch))       // multipart
 ```
 
-**Long-term**: The class is the start of R-20's architectural migration. Rather than deleting it permanently, the preferred path is to grow it into the real `Connection` class (see R-20).
+**After**:
+
+```javascript
+// New methods in record.js:
+Record.prototype._getFullPayload = function () {
+  return this._getPayload(false);
+};
+
+Record.prototype._getChangedPayload = function () {
+  return this._getPayload(true);
+};
+
+// Call sites:
+opts.body = JSON.stringify(opts.sobject._getFullPayload());    // insert
+opts.body = JSON.stringify(opts.sobject._getChangedPayload()); // update
+opts.body = JSON.stringify(opts.sobject._getFullPayload());    // upsert
+body: JSON.stringify(opts.sobject[isPatch ? '_getChangedPayload' : '_getFullPayload']())
+```
+
+**Mechanics**:
+1. Add `_getFullPayload()` and `_getChangedPayload()` to `record.js` (delegating to `_getPayload`).
+2. Update the five call sites in `index.js` and `lib/multipart.js`.
+3. Optionally: leave `_getPayload(bool)` as a private implementation detail and mark the new methods as the public API.
 
 ---
 
-### R-20 — Complete ES6 Class Migration and Decompose the God Object
+### R13 — Replace `getBody` if/else Chain with Dispatch Map
 
-**Smell**: SRP-1 / GRASP-2 — God Object / Large Class / Divergent Change
-**File**: `index.js` (entire file)
-**Technique**: Extract Class + Extract Superclass + Move Method
-**Priority**: High impact, High complexity
-**Effort**: 1–2 weeks (multi-phase, feature-flag recommended)
-**Risk**: High — requires comprehensive test coverage at each step
+**Smell**: OCP violation — if/else type dispatch (Simplifying Conditionals)
+**Refactoring Technique**: Replace Conditional with Polymorphism (4.6) — simplified as a lookup map
+**Priority**: Low
+**Effort**: Low (15 minutes)
+**Risk**: Low — behavior-identical refactor
 
-**Problem**: The `Connection` constructor function in `index.js` holds 44 prototype methods across 7 distinct functional domains. Every feature change requires editing `index.js`. Unit testing any single capability loads the entire 1,082-line file. The `TODO: turn into ES6 class` comment at line 23 confirms this has been the intended direction.
+**Problem**
 
-**Recommended decomposition**:
+`Connection.prototype.getBody` (index.js:477-492) dispatches to `getDocumentBody`, `getAttachmentBody`, or `getContentVersionData` based on a string type. Adding a new blob type requires modifying `getBody`.
 
-| Module | Methods | Lines (approx.) |
-|---|---|---|
-| `lib/http.js` | `_apiRequest`, `_apiAuthRequest`, response helpers | ~120 |
-| `lib/auth.js` | `authenticate`, `refreshToken`, `revokeToken`, `autoRefreshToken`, `getAuthUri`, `getPasswordStatus`, `updatePassword`, `getIdentity` | ~200 |
-| `lib/crud.js` | `insert`, `update`, `upsert`, `delete`, `getRecord` | ~80 |
-| `lib/query.js` | `query`, `queryAll`, `_queryHandler`, `search` | ~100 |
-| `lib/metadata.js` | `getVersions`, `getResources`, `getSObjects`, `getMetadata`, `getDescribe`, `getLimits` | ~70 |
-| `lib/blob.js` | `getBody`, `getAttachmentBody`, `getDocumentBody`, `getContentVersionBody`, `getContentVersionData` | ~60 |
-| `lib/streaming.js` | `createStreamClient`, `subscribe`, `stream` | ~40 |
-| `lib/urlhelper.js` | `getUrl`, `putUrl`, `postUrl`, `deleteUrl`, `apexRest` | ~50 |
-
-**Migration mechanics** (incremental, test after each step):
-
-1. **Complete the ES6 class** in `lib/connection.js` — add the plugin loading logic and getters/setters from `index.js`. Make `index.js` import and use it.
-
-2. **Extract HTTP layer** — move `_apiRequest`, `_apiAuthRequest`, `responseFailureCheck`, and `handleFailedResponse` (see R-04) to `lib/http.js`. The `Connection` class accepts an `HttpClient` dependency or extends/mixes in the http module.
-
-3. **Extract Auth service** — move auth methods to `lib/auth.js`. These methods need access to `this` (Connection properties), so they become instance methods on a mixin or a dedicated `AuthService` class that holds a reference to the connection.
-
-4. **Extract remaining domain modules** one at a time, following the table above.
-
-5. **Update `index.js`** to be a thin entry point that wires up the modules and re-exports the public API — preserving backward compatibility.
-
-**Pattern for service extraction** (using mixins to preserve `this` binding):
+**Before**:
 
 ```javascript
-// lib/auth.js
-const authMixin = (Base) => class extends Base {
-  authenticate(data) { ... }
-  refreshToken(data) { ... }
+Connection.prototype.getBody = function (data) {
+  const opts = this._getOpts(data);
+  const type = (
+    opts.sobject ? opts.sobject.getType() : opts.type
+  ).toLowerCase();
+
+  if (type === 'document') {
+    return this.getDocumentBody(opts);
+  } else if (type === 'attachment') {
+    return this.getAttachmentBody(opts);
+  } else if (type === 'contentversion') {
+    return this.getContentVersionData(opts);
+  } else {
+    return Promise.reject(new Error('invalid type: ' + type));
+  }
+};
+```
+
+**After**:
+
+```javascript
+const BODY_GETTER_MAP = {
+  document: 'getDocumentBody',
+  attachment: 'getAttachmentBody',
+  contentversion: 'getContentVersionData'
+};
+
+Connection.prototype.getBody = function (data) {
+  const opts = this._getOpts(data);
+  const type = (
+    opts.sobject ? opts.sobject.getType() : opts.type
+  ).toLowerCase();
+
+  const methodName = BODY_GETTER_MAP[type];
+  if (!methodName) {
+    return Promise.reject(new Error('invalid type: ' + type));
+  }
+  return this[methodName](opts);
+};
+```
+
+---
+
+### R14 — Fix `_extensionEnabled` Assignment in `fdcstream.js`
+
+**Smell**: L5 — Dead State Assignment on Wrong Object (Data Dealer)
+**Refactoring Technique**: Move Field (2.2), Remove Setting Method (5.10)
+**Priority**: Low
+**Effort**: Low (10 minutes)
+**Risk**: Low
+
+**Problem**
+
+`fdcstream.js:70`: `this._extensionEnabled = true` is inside `replayExtension.incoming`, a plain `function`. When Faye calls it as a method of `replayExtension`, `this` refers to `replayExtension`, not the `Client` instance. The property is never read anywhere.
+
+**After** (remove the dead assignment):
+
+```javascript
+const replayExtension = {
+  incoming: function (message, callback) {
+    if (message.channel === '/meta/handshake') {
+      if (message.ext && message.ext['replay'] === true) {
+        // Replay extension confirmed active.
+        // Store on the Client instance if needed: self._extensionEnabled = true;
+      }
+    }
+    callback(message);
+  },
   // ...
 };
-module.exports = authMixin;
-
-// lib/connection.js
-const authMixin = require('./auth');
-const crudMixin = require('./crud');
-
-class Connection extends authMixin(crudMixin(BaseConnection)) {
-  // ...
-}
 ```
 
-**Alternative**: Use object composition via `Object.assign(Connection.prototype, authMethods)` to avoid the mixin inheritance chain complexity. This has the same behavioral result with lower risk.
-
-**Plugin system**: Move the module-level `plugins` registry into `Connection` instances:
-
-```javascript
-// BEFORE: module-level shared state
-const plugins = {};
-
-// AFTER: per-instance registry
-class Connection {
-  constructor(opts) {
-    this._plugins = {};
-    // ...
-  }
-}
-```
-
-Update `plugin()` and the Connection plugin loading accordingly. This eliminates cross-test contamination from the shared registry.
+If replay-extension detection is genuinely needed in future, the correct fix is to use the captured `self` reference: `self._extensionEnabled = true` (where `self = this` is the `Client` instance captured in the outer constructor).
 
 ---
 
-## Risk Assessment Summary
+### R15 — Implement or Remove the `gzip` Option
 
-| Recommendation | Risk | Effort | Impact |
-|---|---|---|---|
-| R-01 Fix search() dead code | Low | 30 min | High |
-| R-02 Use setId() | Low | 15 min | High |
-| R-03 MULTIPART_TYPES constant | Low | 20 min | Medium |
-| R-04 Fix auto-refresh promise | Medium | 2–3 h | High |
-| R-05 Eliminate Promise anti-patterns | Low | 2–3 h | High |
-| R-06 Extract _resolveWithRefresh | Low | 45 min | Medium |
-| R-07 Parameterize URL methods | Low | 45 min | Medium |
-| R-08 Parameterize blob methods | Low | 30 min | Medium |
-| R-09 Fix apexRest data access | Low | 10 min | Medium |
-| R-10 Fix _queryHandler double _getOpts | Low | 15 min | Low |
-| R-11 Normalize == to === | Low | 10 min | Low |
-| R-12 Standardize let/const | Low | 30 min | Low |
-| R-13 Fix getVersions URL | Low | 20 min | Medium |
-| R-14 Remove redundant toLowerCase | Low | 5 min | Low |
-| R-15 Remove unused self variables | Low | 15 min | Low |
-| R-16 Fix boolean ternary | Low | 5 min | Low |
-| R-17 Fix apiMatch regex | Low | 10 min | Low |
-| R-18 Remove dead error factories | Low | 20 min | Low |
-| R-19 Resolve dead ES6 Connection class | Low | 30 min | Medium |
-| R-20 God Object decomposition | High | 1–2 wks | High |
+**Smell**: M7 — Configured but Non-Functional Option (Speculative Generality)
+**Refactoring Technique**: Substitute Algorithm (1.9) — implement decompression; or dead-code removal
+**Priority**: Medium
+**Effort**: Medium (1–2 hours) to implement; Low (20 minutes) to remove
+**Risk**: Low for removal; Medium for implementation (needs testing against gzip-encoded responses)
+
+**Problem**
+
+`optionhelper.js:49-51` sets `Accept-Encoding: gzip` when `opts.gzip === true`. Node.js native `fetch` does not automatically decompress gzip. `connection.js:65` validates `gzip` as boolean and `constants.js:36` includes it in `defaultOptions`. The feature is validated and documented but produces broken responses when used.
+
+**Option A — Implement (recommended)**:
+
+```javascript
+// In _apiRequest, after receiving the response:
+.then((res) => responseFailureCheck(res))
+.then((res) => unsuccessfulResponseCheck(res))
+.then(async (res) => {
+  // Decompress gzip if the response is compressed
+  const encoding = res.headers.get('content-encoding');
+  if (encoding && encoding.includes('gzip')) {
+    const ds = new DecompressionStream('gzip');
+    const decompressed = res.body.pipeThrough(ds);
+    // Re-wrap in a Response for consistent downstream handling
+    return new Response(decompressed, { headers: res.headers, status: res.status });
+  }
+  return res;
+})
+.then((res) => { ... })
+```
+
+**Option B — Remove (simpler)**:
+1. Remove `gzip: false` from `constants.js` defaultOptions.
+2. Remove `optionTest(util.isBoolean, con.gzip, ...)` from `connection.js`.
+3. Remove the `Accept-Encoding` block from `optionhelper.js`.
+4. Document in CHANGELOG that gzip was removed pending proper implementation.
+
+**Recommendation**: If gzip is not actively used by any callers (check README and examples), Option B is lower risk and avoids shipping a half-implemented feature. Add a GitHub issue to track a proper implementation.
+
+---
+
+### R16 — Add `'use strict'` Consistency as ESM Migration Checkpoint
+
+**See R10** for the immediate fix. The longer-term option is migrating to ESM (`"type": "module"` in `package.json`), which makes strict mode automatic and eliminates `require`. This is a larger change that affects the test suite, all `require()` calls, and `module.exports` statements. Flag as a separate future initiative; implement R10 now.
+
+---
+
+## Phase 4 — Architectural Decomposition
+
+These three items form a coordinated migration. Apply in sequence after all Phase 1–3 changes are in place.
+
+---
+
+### R17 — Complete ES6 Class Migration — Merge Into `lib/connection.js`
+
+**Smell**: H2 — Parallel Connection Definitions Out of Sync (Alternative Classes with Different Interfaces)
+**Refactoring Technique**: Extract Superclass (6.7), Pull Up Method (6.2), Pull Up Constructor Body (6.3)
+**Priority**: High (foundational for R18)
+**Effort**: High (3–5 hours)
+**Risk**: High — moves all 46 prototype methods; requires comprehensive test run after
+
+**Problem**
+
+`lib/connection.js` contains an ES6 `class Connection` stub with field declarations and a `validateConnectionOptions` call. `index.js:23` has a `// TODO turn into ES6 class` comment and contains the real `Connection` function constructor with all 46 prototype methods. `index.js` imports only `validateConnectionOptions` from `lib/connection.js`, ignoring the class entirely. A developer reading `lib/connection.js` sees a `Connection` class but all behavior is in `index.js`.
+
+**Migration Plan**:
+
+1. In `lib/connection.js`, expand the `class Connection` to include the full constructor body from `index.js:24-54` (plugin loading, timeout parsing).
+2. Move all `Connection.prototype.*` method definitions from `index.js` into the class as regular methods. Order: constructor → auth getters/setters → `_getOpts` → OAuth methods → system API methods → CRUD → blob → query → search → URL helpers → streaming → auto-refresh → internal HTTP.
+3. Move the module-level helper functions (`responseFailureCheck`, `unsuccessfulResponseCheck`, `addSObjectAndId`, `respToJson`, `requireForwardSlash`) into `lib/connection.js` as module-private functions (not class members).
+4. In `index.js`, replace the function constructor and all prototype assignments with `const Connection = require('./lib/connection').Connection`.
+5. Keep `createConnection`, `createSObject`, `plugin`, `Record`, `version`, `API_VERSION`, and `module.exports` in `index.js` — it becomes a thin composition/export root.
+
+**Before** (`index.js:24`):
+```javascript
+// TODO turn into ES6 class
+const Connection = function (opts) { ... };
+Connection.prototype.getOAuth = function () { ... };
+// ... 45 more prototype assignments
+```
+
+**After** (`lib/connection.js`):
+```javascript
+class Connection {
+  constructor(opts) {
+    opts = Object.assign({}, CONST.defaultOptions, opts || {});
+    opts.environment = opts.environment.toLowerCase();
+    opts.mode = opts.mode.toLowerCase();
+    Object.assign(this, opts);
+    validateConnectionOptions(this);
+    this.timeout = parseInt(this.timeout, 10);
+    if (opts.plugins && Array.isArray(opts.plugins)) {
+      opts.plugins.forEach((pname) => {
+        if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
+        this[pname] = { ...plugins[pname]._fns };
+        for (const key of Object.keys(this[pname])) {
+          this[pname][key] = this[pname][key].bind(this);
+        }
+      });
+    }
+  }
+
+  getOAuth() { return this.oauth; }
+  setOAuth(oauth) { this.oauth = oauth; }
+  // ... all 46 methods as class methods
+}
+```
+
+**After** (`index.js`):
+```javascript
+'use strict';
+
+const { Connection } = require('./lib/connection');
+const Record = require('./lib/record');
+const util = require('./lib/util');
+const version = require('./package.json').version;
+const API_VERSION = require('./package.json').sfdx.api;
+
+const createConnection = (opts) => new Connection(opts);
+const createSObject = function (type, fields) { ... };
+
+module.exports = { util, plugin, Record, version, API_VERSION, createConnection, createSObject };
+```
+
+**Risk Mitigation**: Run `npm test` after each group of methods is moved. Move in logical groups (auth, CRUD, query, etc.) rather than all at once.
+
+---
+
+### R18 — Extract `lib/plugin.js` — Separate Plugin System
+
+**Smell**: H1 — Divergent Change / God Object (Bloater + Change Preventer)
+**Refactoring Technique**: Extract Class (2.3), Move Method (2.1), Move Field (2.2)
+**Priority**: Medium (do in parallel with or after R17)
+**Effort**: Low (1 hour)
+**Risk**: Low — Plugin system is self-contained
+
+**Problem**
+
+`Plugin` constructor, `Plugin.prototype.fn`, and the `plugin()` factory function are completely self-contained in `index.js` (lines 932-969). They have no dependency on `Connection` internals and no reason to live in the same file.
+
+**After** (`lib/plugin.js`):
+
+```javascript
+'use strict';
+
+const util = require('./util');
+
+const plugins = {};
+
+function Plugin(opts) {
+  this.namespace = opts.namespace;
+  this._fns = {};
+  this.util = { ...util };
+}
+
+Plugin.prototype.fn = function (fnName, fn) {
+  if (typeof fn !== 'function') {
+    throw new Error('invalid function provided');
+  }
+  if (typeof fnName !== 'string') {
+    throw new Error('invalid function name provided');
+  }
+  this._fns[fnName] = fn;
+  return this;
+};
+
+const plugin = function (opts) {
+  if (typeof opts === 'string') {
+    opts = { namespace: opts };
+  }
+  if (!opts || !opts.namespace) {
+    throw new Error('no namespace provided for plugin');
+  }
+  opts = Object.assign({ override: false }, opts);
+  if (plugins[opts.namespace] && opts.override !== true) {
+    throw new Error(
+      'a plugin with namespace ' + opts.namespace + ' already exists'
+    );
+  }
+  plugins[opts.namespace] = new Plugin(opts);
+  return plugins[opts.namespace];
+};
+
+module.exports = { plugin, plugins, Plugin };
+```
+
+**Mechanics**:
+1. Create `lib/plugin.js` with the content above.
+2. In `index.js` (or `lib/connection.js` post-R17), replace the inline definitions with `const { plugin, plugins } = require('./lib/plugin')`.
+3. The `plugins` object must be imported into `Connection` (or `lib/connection.js`) since the constructor reads `plugins[pname]`.
+
+---
+
+### R19 — Split `index.js` by Responsibility Domain
+
+**Smell**: H1 — Divergent Change / God Object, High Cohesion Violation (GRASP)
+**Refactoring Technique**: Extract Class (2.3), Move Method (2.1)
+**Priority**: Medium (requires R17 complete)
+**Effort**: High (4–6 hours)
+**Risk**: Medium — public API surface must remain unchanged
+
+**Problem**
+
+Even after R17 (class migration), `lib/connection.js` will have 46 methods spanning authentication, CRUD, query, search, blob, streaming, HTTP infrastructure, and auto-refresh. This is still a Large Class with Divergent Change risk.
+
+**Proposed Module Boundaries**:
+
+```
+lib/connection.js     — Class definition, constructor, getters/setters, _getOpts
+lib/auth.js           — authenticate, refreshToken, revokeToken, getAuthUri, autoRefreshToken, _resolveWithRefresh
+lib/api.js            — All Salesforce REST API methods (CRUD, query, search, blob, URL helpers, apexRest, streaming)
+lib/http.js           — _apiRequest, _apiAuthRequest, responseFailureCheck, unsuccessfulResponseCheck, addSObjectAndId, respToJson
+lib/plugin.js         — Plugin, plugin() (from R18)
+index.js              — Composition root: requires and re-exports public API only
+```
+
+**Approach**: Use mixins or composition rather than inheritance to keep `Connection` as the single public class while distributing the method implementations:
+
+```javascript
+// lib/connection.js — after class definition
+const authMethods = require('./auth');
+const apiMethods = require('./api');
+Object.assign(Connection.prototype, authMethods, apiMethods);
+```
+
+Or group methods directly into the class file and add file-level commentary marking each responsibility boundary. The mixin approach preserves the single public class without introducing a class hierarchy.
+
+**Risk Mitigation**: The public API (all exports from `index.js`) must not change. Callers use `createConnection()` and call methods on the returned object — the class shape is invisible to them. Run the full test suite after each module extraction.
+
+---
+
+## Risk Summary
+
+| ID | Recommendation | Risk | Effort |
+|----|---------------|------|--------|
+| R01 | Rewrite multipart to use FormData | Medium | Medium |
+| R02 | Apply AbortSignal.timeout to _apiRequest | Low | Low |
+| R03 | Fix previous() falsy value bug | Low | Low |
+| R04 | Replace querystring with URLSearchParams | Low | Low |
+| R05 | Remove url module import | None | Low |
+| R06 | Replace _changed Array with Set | Low | Low |
+| R07 | Simplify hasChanged control flow | None | Low |
+| R08 | Fix getVersions magic HTTP URL | Low | Low |
+| R09 | Remove dead callback from _getOpts | Low | Low |
+| R10 | Add 'use strict' to five files | None | Low |
+| R11 | Remove unnecessary self = this aliases | Low | Medium |
+| R12 | Split _getPayload into two methods | Low | Low |
+| R13 | Replace getBody if/else with dispatch map | Low | Low |
+| R14 | Fix _extensionEnabled dead assignment | Low | Low |
+| R15 | Implement or remove gzip option | Low–Medium | Low–Medium |
+| R16 | (ESM migration checkpoint — deferred) | — | — |
+| R17 | Complete ES6 class migration | High | High |
+| R18 | Extract lib/plugin.js | Low | Low |
+| R19 | Split index.js by responsibility | Medium | High |
 
 ---
 
 ## Recommended Implementation Sequence
 
-### Phase 1 — Correctness (complete before anything else)
-
-These are behavioral fixes. They do not change the public API.
-
-1. **R-02** — Use `setId()` (5 minutes, zero risk)
-2. **R-01** — Fix `search()` dead code (30 minutes, adds correct Record wrapping)
-3. **R-04** — Fix auto-refresh promise chain (2–3 hours — the only remaining runtime defect)
-
-### Phase 2 — Code Quality Quick Wins (1 day)
-
-4. **R-03** — Extract `MULTIPART_TYPES` constant
-5. **R-09** — Fix `apexRest` `data` vs `opts` access
-6. **R-11** — Normalize `==` to `===`
-7. **R-12** — Standardize `let`/`const` for opts
-8. **R-13** — Fix `getVersions` URL
-9. **R-14** — Remove redundant `toLowerCase()`
-10. **R-15** — Remove unused `self` variables
-11. **R-16** — Fix boolean ternary in `multipart.js`
-12. **R-17** — Fix `apiMatch` regex
-13. **R-18** — Remove dead error factories
-14. **R-19** — Remove dead ES6 Connection class
-
-### Phase 3 — Structural Deduplication (2–3 days)
-
-15. **R-05** — Eliminate all 8 Promise constructor anti-patterns (do `_apiRequest` as part of R-04 in Phase 1)
-16. **R-06** — Extract `_resolveWithRefresh` helper
-17. **R-07** — Parameterize URL helper methods
-18. **R-08** — Parameterize blob methods
-19. **R-10** — Fix `_queryHandler` double `_getOpts`
-
-### Phase 4 — Architectural Refactoring (1–2 weeks)
-
-20. **R-20** — God Object decomposition into domain modules
-
----
-
-## Dependencies Between Refactorings
-
 ```
-R-04 (fix auto-refresh) must precede R-05 (anti-pattern removal) for _apiRequest
-R-05 (anti-pattern removal) enables R-06 (onRefresh extraction) — both use direct .then() chains
-R-19 (remove dead Connection class) is a prerequisite for R-20 (class migration)
-R-07 (URL methods) and R-08 (blob methods) are independent but logically paired
-R-03 (MULTIPART_TYPES) should precede any insert/update method changes in R-20
+Phase 1 (fix broken behavior):
+  R01 → R02 → R03
+
+Phase 2 (mechanical wins, any order):
+  R04, R05, R06, R07, R08, R09, R10
+
+Phase 3 (design, any order after Phase 2):
+  R11 → R12 → R13 → R14 → R15
+
+Phase 4 (architectural, in this order):
+  R18 → R17 → R19
 ```
 
----
-
-## Prevention Strategies
-
-### Tooling
-
-1. **ESLint** — Add rules to prevent recurrence:
-   - `eqeqeq: ["error", "always"]` — enforces `===` everywhere
-   - `no-unused-vars: "error"` — catches dead code and unused `self` patterns
-   - `prefer-const: "error"` — standardizes const usage
-   - `no-promise-executor-return` — flags Promise constructor anti-pattern
-
-2. **TypeScript** (or JSDoc types) — A typed `Response` type would have caught `res.txt()` at compile time. Add JSDoc `@param` and `@returns` annotations to the HTTP layer as a first step.
-
-3. **Automated tests for auto-refresh** — The broken `autoRefresh` path went undetected because no test exercises it end-to-end with a mock that returns `INVALID_SESSION_ID` followed by a successful token refresh and retry.
-
-### Process
-
-- Add a PR checklist item: "Are all TODO comments addressed or converted to tracked issues?"
-- Enforce `opts.xyz` not `data.xyz` after `_getOpts` in code review — a linting rule can automate this
-- Any new method that duplicates the URL or blob pattern should trigger an extraction before merge
+After each recommendation, run `npm test` to confirm all 91 tests remain green. The architectural Phase 4 changes should be done on a feature branch with a pull request and full review.

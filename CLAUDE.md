@@ -8,9 +8,9 @@ nforce8 is a Node.js REST API wrapper for Salesforce, a modernized fork of the o
 
 ## Commands
 
-- **Run all tests with coverage:** `npm test`
+- **Run all tests with coverage:** `npm test` (optional root `.env` is loaded via Node’s `--env-file-if-exists=.env` when present)
 - **Run a single test file:** `npx mocha test/<filename>.js` (e.g., `npx mocha test/crud.js`)
-- **Lint:** `npx eslint .` (ESLint config in `.eslintrc.json`)
+- **Lint:** `npm run lint` or `npx eslint .` (flat config in `eslint.config.js`)
 
 There is no build step — this is a plain Node.js module with no transpilation.
 
@@ -51,4 +51,4 @@ There is no build step — this is a plain Node.js module with no transpilation.
 
 ## Linting
 
-ESLint with `eslint:recommended`. Notable rules: valid-jsdoc (error), wrap-iife (error), yoda (never). Environment: ES6 + Node.js + Mocha globals.
+ESLint 10 with flat config (`eslint.config.js`): `eslint:recommended` rules plus quotes (single), wrap-iife, yoda (never), etc. Main code uses Node + Mocha globals; `examples/**` is linted with `no-undef` / `no-unused-vars` off for snippet-style scripts.

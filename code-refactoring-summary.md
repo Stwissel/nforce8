@@ -1,174 +1,155 @@
 # Code Refactoring Summary — nforce8
 
+**Generated**: 2026-03-23
+**Based on**: code-smell-detector-report.md (18 issues) and code-refactoring-report.md (20 recommendations)
+**Codebase state**: 91 tests passing, Node 22+, 2 runtime dependencies
+
+---
+
 ## Overview
 
-**Project**: nforce8 — Salesforce REST API wrapper for Node.js
-**Date**: 2026-03-23
-**Total Recommendations**: 20
-**Already Fixed**: 3 runtime bugs (BUG-1, BUG-2, MD-6 `for...in` on array)
-**Remaining Runtime Defect**: ARCH-1 — broken auto-refresh promise chain (R-04)
+The codebase has one broken feature, one correctness bug, one silent misconfiguration, and a collection of mechanical and architectural improvements. 20 recommendations are organized across four phases.
 
 ---
 
 ## Priority Matrix
 
-| Recommendation | Impact | Complexity | Risk |
-|---|---|---|---|
-| R-04 Fix broken auto-refresh promise chain | H | M | M |
-| R-01 Fix `search()` dead code / logic bug | H | L | L |
-| R-02 Use `Record.setId()` not `_fields.id` | H | L | L |
-| R-05 Eliminate 8 Promise constructor anti-patterns | H | L | L |
-| R-20 Decompose the God Object (44 methods) | H | H | H |
-| R-03 Extract `MULTIPART_TYPES` constant | M | L | L |
-| R-06 Extract `_resolveWithRefresh` helper | M | L | L |
-| R-07 Parameterize four URL helper methods | M | L | L |
-| R-08 Parameterize four blob retrieval methods | M | L | L |
-| R-09 Fix `apexRest` data vs opts access | M | L | L |
-| R-13 Fix `getVersions` hardcoded URL | M | L | L |
-| R-19 Resolve dead ES6 Connection class | M | L | L |
-| R-10 Fix `_queryHandler` double `_getOpts` | L | L | L |
-| R-11 Normalize `==` to `===` | L | L | L |
-| R-12 Standardize `let` / `const` for opts | L | L | L |
-| R-14 Remove redundant `toLowerCase()` | L | L | L |
-| R-15 Remove unused `self` variables | L | L | L |
-| R-16 Fix boolean ternary in `multipart.js` | L | L | L |
-| R-17 Tighten `apiMatch` validation regex | L | L | L |
-| R-18 Remove dead error factory functions | L | L | L |
+| ID | Recommendation | Impact | Complexity | Risk |
+|----|---------------|--------|------------|------|
+| **R01** | Rewrite multipart upload to use FormData | H | M | M |
+| **R02** | Apply AbortSignal.timeout to _apiRequest | H | L | L |
+| **R03** | Fix previous() falsy value bug | H | L | L |
+| **R04** | Replace deprecated querystring with URLSearchParams | M | L | L |
+| **R05** | Remove unnecessary url module import | L | L | L |
+| **R06** | Replace _changed Array with Set | M | L | L |
+| **R07** | Simplify hasChanged control flow | L | L | L |
+| **R08** | Fix getVersions magic HTTP URL | M | L | L |
+| **R09** | Remove dead callback scaffolding from _getOpts | M | L | L |
+| **R10** | Add 'use strict' to five files | L | L | L |
+| **R11** | Remove unnecessary self = this aliases | L | M | L |
+| **R12** | Split _getPayload into _getFullPayload / _getChangedPayload | M | L | L |
+| **R13** | Replace getBody if/else chain with dispatch map | L | L | L |
+| **R14** | Fix _extensionEnabled dead assignment in fdcstream.js | L | L | L |
+| **R15** | Implement or remove the gzip option | M | M | M |
+| **R17** | Complete ES6 class migration into lib/connection.js | H | H | H |
+| **R18** | Extract lib/plugin.js | M | L | L |
+| **R19** | Split index.js by responsibility domain | H | H | M |
 
-**Impact**: H = High / M = Medium / L = Low
-**Complexity**: H = High / M = Medium / L = Low
-**Risk**: H = High / M = Medium / L = Low
-
----
-
-## Quick Reference — Refactoring Techniques Applied
-
-| Recommendation | Technique(s) from Refactoring Catalog |
-|---|---|
-| R-01 Fix search() | Substitute Algorithm, Remove Dead Code |
-| R-02 Use setId() | Encapsulate Field (use existing API) |
-| R-03 MULTIPART_TYPES constant | Replace Magic Number with Symbolic Constant |
-| R-04 Fix auto-refresh | Replace Error Code with Exception, Separate Query from Modifier |
-| R-05 Promise anti-patterns | Inline Method, Replace Temp with Query |
-| R-06 Extract _resolveWithRefresh | Extract Method |
-| R-07 URL methods parameterization | Parameterize Method |
-| R-08 Blob methods parameterization | Parameterize Method |
-| R-09 Fix apexRest access | Inline Temp |
-| R-10 Double _getOpts | Inline Temp |
-| R-11 Equality operators | Substitute Algorithm |
-| R-12 let vs const | Substitute Algorithm |
-| R-13 Fix getVersions | Replace Magic Number with Symbolic Constant |
-| R-14 Double toLowerCase | Inline Temp |
-| R-15 Unused self | Remove Assignments to Parameters, Inline Temp |
-| R-16 Boolean ternary | Substitute Algorithm |
-| R-17 apiMatch regex | Substitute Algorithm |
-| R-18 Dead error factories | Remove Dead Code |
-| R-19 Dead Connection class | Inline Class |
-| R-20 God Object decomposition | Extract Class, Extract Superclass, Move Method |
-
----
-
-## Code Smell Categories Addressed
-
-| Smell Category | Recommendations | Count |
-|---|---|---|
-| Composing Methods | R-05, R-06, R-09, R-10, R-14, R-15 | 6 |
-| Moving Features | R-02, R-20 | 2 |
-| Organizing Data | R-03, R-12, R-13, R-17 | 4 |
-| Simplifying Conditionals | R-11, R-16 | 2 |
-| Simplifying Method Calls | R-07, R-08 | 2 |
-| Dealing with Generalization | R-18, R-19, R-20 | 3 |
-| Bug / Correctness | R-01, R-04 | 2 |
-| Style / Cleanup | R-12, R-15, R-16 | (overlapping) |
-
----
-
-## Expected Benefits by Phase
-
-### Phase 1 — Correctness (immediate)
-
-- **R-04 completed**: `autoRefresh: true` works end-to-end for the first time
-- **R-01 completed**: `search()` returns `Record` instances in non-raw mode as documented
-- **R-02 completed**: After an `insert()`, the SObject's change-tracking correctly reflects the assigned `id`
-- Net: Three behavioral defects eliminated with minimal code change
-
-### Phase 2 — Code Quality (1 day)
-
-- Magic string duplication eliminated (R-03) — binary type list maintained in one place
-- Three equality-consistency issues resolved (R-11)
-- Hardcoded insecure URL fixed (R-13)
-- Dead code removed: redundant `toLowerCase()`, unused `self`, dead error factories, dead ES6 class
-- All changes are mechanical with zero behavior impact and low review cost
-
-### Phase 3 — Structural Deduplication (2–3 days)
-
-- Eight Promise constructor anti-patterns replaced with clean chains (R-05) — eliminates a class of swallowed exceptions
-- Four URL methods consolidated into one helper — any future URL-handling change touches one place (R-07)
-- Four blob methods consolidated into one helper (R-08)
-- Duplicated `onRefresh` callback block extracted (R-06) — `authenticate` and `refreshToken` now share a single implementation
-- Result: `index.js` shrinks by ~60–80 lines without any public API change
-
-### Phase 4 — Architectural Refactoring (1–2 weeks)
-
-- God Object resolved: `index.js` becomes a thin entry point; domain logic moves to focused modules
-- Plugin registry scoped per-instance: cross-test contamination eliminated
-- `lib/connection.js` becomes the canonical `Connection` class — the abandoned ES6 migration completed
-- Each domain area (`auth`, `crud`, `query`, `metadata`, `blob`, `streaming`) can be tested and modified independently
-- `autoRefresh` path testable in isolation without spinning up the full connection
+Impact, Complexity, Risk: H = High, M = Medium, L = Low
 
 ---
 
 ## Recommended Implementation Sequence
 
-```
-Phase 1 — Correctness  (before any other work)
-  1.  R-02  Use setId() instead of _fields.id              15 min   Low risk
-  2.  R-01  Fix search() dead code / resolve recs           30 min   Low risk
-  3.  R-04  Fix auto-refresh broken promise chain          2-3 hr   Medium risk
+### Phase 1 — Fix Broken or Incorrect Behavior (do first)
 
-Phase 2 — Quick Wins  (1 day, all Low risk)
-  4.  R-03  MULTIPART_TYPES constant                        20 min
-  5.  R-09  Fix apexRest data vs opts                       10 min
-  6.  R-11  Normalize == to ===                             10 min
-  7.  R-12  Standardize let/const for opts                  30 min
-  8.  R-13  Fix getVersions URL                             20 min
-  9.  R-14  Remove redundant toLowerCase                     5 min
-  10. R-15  Remove unused self variables                    15 min
-  11. R-16  Fix boolean ternary in multipart.js              5 min
-  12. R-17  Tighten apiMatch regex                          10 min
-  13. R-18  Remove dead error factories                     20 min
-  14. R-19  Remove dead ES6 Connection class                30 min
+| Order | ID | What | Why First |
+|-------|----|------|-----------|
+| 1 | R01 | Rewrite multipart to FormData | Multipart upload sends no body — feature is broken |
+| 2 | R02 | Add AbortSignal.timeout to _apiRequest | All non-auth API calls are unbounded; timeout config silently ignored |
+| 3 | R03 | Fix previous() falsy value bug | Returns undefined for 0, '', false, null — correctness bug |
 
-Phase 3 — Structural  (2-3 days, all Low risk except where noted)
-  15. R-05  Eliminate Promise anti-patterns                2-3 hr   (do _apiRequest as part of R-04)
-  16. R-06  Extract _resolveWithRefresh                    45 min
-  17. R-07  Parameterize URL methods                       45 min
-  18. R-08  Parameterize blob methods                      30 min
-  19. R-10  Fix _queryHandler double _getOpts              15 min
+### Phase 2 — Mechanical Quick Wins (any order, single session)
 
-Phase 4 — Architecture  (1-2 weeks, High risk — requires test expansion)
-  20. R-20  Decompose God Object into domain modules        1-2 wks
-```
+| Order | ID | What | Effort |
+|-------|----|------|--------|
+| 4 | R04 | Replace querystring with URLSearchParams | 20 min |
+| 5 | R05 | Remove url module import | 5 min |
+| 6 | R06 | Replace _changed Array with Set | 30 min |
+| 7 | R07 | Simplify hasChanged control flow | 5 min |
+| 8 | R08 | Fix getVersions magic HTTP URL | 10 min |
+| 9 | R09 | Remove dead callback from _getOpts | 20 min |
+| 10 | R10 | Add 'use strict' to five files | 5 min |
+
+### Phase 3 — Design and Consistency
+
+| Order | ID | What | Effort |
+|-------|----|------|--------|
+| 11 | R11 | Remove self = this where arrow functions suffice | 1-2 h |
+| 12 | R12 | Split _getPayload into two named methods | 30 min |
+| 13 | R13 | Replace getBody if/else with dispatch map | 15 min |
+| 14 | R14 | Fix _extensionEnabled dead assignment | 10 min |
+| 15 | R15 | Implement or remove gzip option | 1-2 h |
+
+### Phase 4 — Architectural Decomposition (feature branch, code review)
+
+| Order | ID | What | Effort | Depends on |
+|-------|----|------|--------|-----------|
+| 16 | R18 | Extract lib/plugin.js | 1 h | — |
+| 17 | R17 | Complete ES6 class migration | 3-5 h | R11 (self cleanup), R09 (_getOpts cleanup) |
+| 18 | R19 | Split index.js by responsibility | 4-6 h | R17 |
 
 ---
 
-## Key Dependency Rules
+## Quick Reference — Refactoring Techniques Applied
 
-- R-04 (auto-refresh fix) must be done before R-05 (anti-pattern removal) for `_apiRequest` — they touch the same method
-- R-05 (direct chains) is a prerequisite for R-06 (onRefresh extraction) — both assume `.then()` chain style
-- R-19 (remove dead class) is a prerequisite for R-20 (class migration) — clean slate before rebuilding
-- R-03 (MULTIPART_TYPES constant) should precede any insert/update changes in R-20 to avoid re-touching those methods
+| Technique | IDs |
+|-----------|-----|
+| Substitute Algorithm | R01, R02, R04, R11, R15 |
+| Replace Data Value with Object | R06 |
+| Replace Parameter with Explicit Methods | R12 |
+| Remove Parameter | R09 |
+| Replace Nested Conditional with Guard Clauses | R03, R07 |
+| Replace Conditional with Polymorphism (dispatch map) | R13 |
+| Replace Magic Number with Symbolic Constant | R08 |
+| Inline Method | R05 |
+| Move Method / Move Field | R14, R18 |
+| Extract Class | R18, R19 |
+| Pull Up Method / Pull Up Constructor Body | R17 |
+| Introduce Assertion (strict mode) | R10 |
 
 ---
 
-## SOLID Compliance — Current vs. Target
+## Key Issues Being Fixed
 
-| Principle | Current | After Phase 1-3 | After Phase 4 |
-|---|---|---|---|
-| SRP | 4/10 | 5/10 | 9/10 |
-| OCP | 6/10 | 7/10 | 8/10 |
-| LSP | 9/10 | 9/10 | 9/10 |
-| ISP | 8/10 | 8/10 | 9/10 |
-| DIP | 6/10 | 6/10 | 8/10 |
+### Broken Feature
+**R01 — Multipart Upload** (`lib/multipart.js`, `lib/optionhelper.js`)
+Document, Attachment, and ContentVersion insert/update calls send a request with a `Content-Type: multipart/form-data` header and no body. The fix rewrites `multipart.js` to return a `FormData` instance and updates `optionhelper.js` to assign it to `ropts.body`.
 
-The SRP score is the primary driver — resolving the God Object (R-20) delivers the largest single improvement. Phases 1–3 provide measurable correctness and maintainability gains with low risk and no architectural disruption.
+### Silent Misconfiguration
+**R02 — Timeout** (`index.js`, `lib/optionhelper.js`)
+Authentication calls respect the configured `timeout` via `AbortSignal.timeout`. All other API calls (CRUD, query, search, etc.) do not — `ropts.timeout` is set but `fetch` ignores it. Fix: apply the identical `AbortSignal.timeout` block from `_apiAuthRequest` to `_apiRequest`.
+
+### Correctness Bug
+**R03 — previous() Falsy Values** (`lib/record.js`)
+`Record.prototype.previous('field')` returns `undefined` when the previous value was `0`, `''`, `false`, or `null`. Fix: change truthiness check `if (this._previous[field])` to presence check `if (field in this._previous)`.
+
+### Deprecated Module
+**R04 — querystring** (`index.js`)
+The `querystring` module is deprecated in Node.js. Four call sites can be directly replaced with `new URLSearchParams(obj).toString()`.
+
+### Performance and Data Structure
+**R06 — _changed Array** (`lib/record.js`)
+`_changed` is maintained as an `Array` but used exclusively for membership testing. `Array.includes()` is O(n); `Set.has()` is O(1). Converting to `Set` also removes the need for the `includes()` guard in `set()` since `Set.add()` is idempotent.
+
+### Architectural
+**R17 — ES6 Class Migration** (`index.js`, `lib/connection.js`)
+`index.js` has a `// TODO turn into ES6 class` comment on line 23 and contains a `Connection` function constructor with 46 prototype methods. `lib/connection.js` has an ES6 `class Connection` stub that is never used as a class. Completing the migration eliminates the duplicate definition and makes individual concerns independently testable.
+
+---
+
+## Expected Benefits by Phase
+
+| Phase | Primary Benefits |
+|-------|-----------------|
+| Phase 1 | Multipart upload works; timeout enforced on all requests; previous() returns correct values |
+| Phase 2 | No deprecated modules; codebase consistent with Node 22+ idioms; dead code removed |
+| Phase 3 | Clearer method names; consistent patterns; no misleading dead state; gzip option honest |
+| Phase 4 | Single canonical Connection class; plugin system independently maintainable; index.js is a thin composition root; each concern independently testable |
+
+---
+
+## Files Affected
+
+| File | Recommendations |
+|------|----------------|
+| `index.js` | R02, R04, R08, R09, R11, R13, R17, R18, R19 |
+| `lib/record.js` | R03, R06, R07, R11, R12 |
+| `lib/multipart.js` | R01, R10 |
+| `lib/optionhelper.js` | R01, R02, R05 |
+| `lib/connection.js` | R15 (gzip validation), R17 |
+| `lib/constants.js` | R15 (gzip default) |
+| `lib/fdcstream.js` | R10, R14 |
+| `lib/util.js` | R10 |
+| `lib/errors.js` | R10 |
+| `lib/plugin.js` (new) | R18 |

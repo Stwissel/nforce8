@@ -117,14 +117,17 @@ describe('query', () => {
   });
 
   describe('#search', function () {
-    it('should return Record instances when raw is false', (done) => {
+    it('should return Record instances in searchRecords when raw is false', (done) => {
       let searchResponse = {
         code: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify([
-          { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' },
-          { attributes: { type: 'Account' }, Id: '001DEF', Name: 'Test' }
-        ])
+        body: JSON.stringify({
+          searchRecords: [
+            { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' },
+            { attributes: { type: 'Account' }, Id: '001DEF', Name: 'Test' }
+          ],
+          totalSize: 2
+        })
       };
       api
         .getGoodServerInstance(searchResponse)
@@ -133,9 +136,10 @@ describe('query', () => {
         )
         .then((res) => {
           should.exist(res);
-          res.length.should.equal(2);
-          res[0].should.be.instanceOf(nforce.Record);
-          res[0].get('name').should.equal('Acme');
+          res.searchRecords.length.should.equal(2);
+          res.searchRecords[0].should.be.instanceOf(nforce.Record);
+          res.searchRecords[0].get('name').should.equal('Acme');
+          res.totalSize.should.equal(2);
         })
         .catch((err) => should.not.exist(err))
         .finally(() => done());
@@ -145,9 +149,12 @@ describe('query', () => {
       let searchResponse = {
         code: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify([
-          { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' }
-        ])
+        body: JSON.stringify({
+          searchRecords: [
+            { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' }
+          ],
+          totalSize: 1
+        })
       };
       api
         .getGoodServerInstance(searchResponse)
@@ -156,9 +163,32 @@ describe('query', () => {
         )
         .then((res) => {
           should.exist(res);
-          res.length.should.equal(1);
-          res[0].should.not.be.instanceOf(nforce.Record);
-          res[0].Name.should.equal('Acme');
+          res.searchRecords.length.should.equal(1);
+          res.searchRecords[0].should.not.be.instanceOf(nforce.Record);
+          res.searchRecords[0].Name.should.equal('Acme');
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
+
+    it('should return response as-is when searchRecords is empty', (done) => {
+      let searchResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchRecords: [],
+          totalSize: 0
+        })
+      };
+      api
+        .getGoodServerInstance(searchResponse)
+        .then(() =>
+          orgMulti.search({ search: 'FIND {nothing}', oauth: oauth })
+        )
+        .then((res) => {
+          should.exist(res);
+          res.searchRecords.length.should.equal(0);
+          res.totalSize.should.equal(0);
         })
         .catch((err) => should.not.exist(err))
         .finally(() => done());

@@ -181,7 +181,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
 
   if (opts.authEndpoint) {
     endpoint = opts.authEndpoint;
-  } else if (self.environment == 'sandbox') {
+  } else if (self.environment === 'sandbox') {
     endpoint = this.testAuthEndpoint;
   } else {
     endpoint = this.authEndpoint;
@@ -206,18 +206,17 @@ Connection.prototype.authenticate = function (data) {
   const self = this;
   const opts = Object.assign({ executeOnRefresh: false, oauth: {} }, this._getOpts(data));
 
-  opts.uri = self.environment == 'sandbox' ? this.testLoginUri : this.loginUri;
+  opts.uri = self.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
   opts.method = 'POST';
   opts.headers = {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
 
-  let bopts = {
+  const bopts = {
     client_id: self.clientId,
     client_secret: self.clientSecret
   };
 
-  //TODO: Add JWT authentication
   if (opts.code) {
     bopts.grant_type = 'authorization_code';
     bopts.code = opts.code;
@@ -261,7 +260,7 @@ Connection.prototype.refreshToken = function (data) {
     }
   });
 
-  opts.uri = this.environment == 'sandbox' ? this.testLoginUri : this.loginUri;
+  opts.uri = this.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
   opts.method = 'POST';
 
   const refreshOpts = {
@@ -363,7 +362,6 @@ Connection.prototype.getResources = function (data) {
 };
 
 Connection.prototype.getSObjects = function (data) {
-  //TODO: fix me! let self = this;
   let opts = this._getOpts(data);
   opts.resource = '/sobjects';
   opts.method = 'GET';
@@ -511,15 +509,6 @@ Connection.prototype.getDocumentBody = function (data) {
   return this._apiRequest(opts);
 };
 
-Connection.prototype.getContentVersionBody = function (data) {
-  let opts = this._getOpts(data);
-  let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = '/sobjects/contentversion/' + id + '/body';
-  opts.method = 'GET';
-  opts.blob = true;
-  return this._apiRequest(opts);
-};
-
 Connection.prototype.getContentVersionData = function (data) {
   let opts = this._getOpts(data);
   let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
@@ -609,7 +598,7 @@ const respToJson = (respCandidate) => {
   }
   try {
     return JSON.parse(respCandidate);
-  } catch (e) {
+  } catch {
     throw errors.invalidJson();
   }
 };
@@ -631,10 +620,14 @@ Connection.prototype.search = function (data) {
   opts.qs = { q: opts.search };
 
   return this._apiRequest(opts).then((resp) => {
-    if (opts.raw || !resp.length) {
+    if (opts.raw) {
       return resp;
     }
-    return resp.map((r) => new Record(r));
+    const records = (resp && resp.searchRecords) || [];
+    if (records.length === 0) {
+      return resp;
+    }
+    return { ...resp, searchRecords: records.map((r) => new Record(r)) };
   });
 };
 
@@ -696,11 +689,8 @@ Connection.prototype.apexRest = function (data) {
   let opts = this._getOpts(data, null, {
     singleProp: 'uri'
   });
-  // Allow for data.uri to start with or without a /
-  opts.uri =
-    opts.oauth.instance_url +
-    '/services/apexrest/' +
-    (data.uri.substring(0, 1) === '/' ? data.uri.substring(1) : data.uri);
+  const apexPath = opts.uri.startsWith('/') ? opts.uri.substring(1) : opts.uri;
+  opts.uri = opts.oauth.instance_url + '/services/apexrest/' + apexPath;
   opts.method = opts.method || 'GET';
   if (opts.urlParams) {
     opts.qs = opts.urlParams;
@@ -759,7 +749,7 @@ Connection.prototype.autoRefreshToken = function (data) {
     executeOnRefresh: opts.executeOnRefresh
   };
 
-  if (opts.oauth.refresh_token) {
+  if (opts.oauth.refresh_token || opts.oauth.assertion) {
     return Connection.prototype.refreshToken.call(this, refreshOpts);
   }
   return Connection.prototype.authenticate.call(this, refreshOpts);
@@ -770,12 +760,16 @@ Connection.prototype.autoRefreshToken = function (data) {
  *****************************/
 
 Connection.prototype._apiAuthRequest = function (opts) {
-  if (this.timeout) {
-    opts.timeout = this.timeout;
-  }
-
   if (opts.requestOpts) {
     Object.assign(opts, opts.requestOpts);
+  }
+
+  if (this.timeout) {
+    const timeoutSignal = AbortSignal.timeout(this.timeout);
+    opts.signal =
+      opts.signal !== undefined
+        ? AbortSignal.any([timeoutSignal, opts.signal])
+        : timeoutSignal;
   }
 
   const self = this;
@@ -814,6 +808,9 @@ Connection.prototype._apiRequest = function (opts) {
     .then((res) => responseFailureCheck(res))
     .then((res) => unsuccessfulResponseCheck(res))
     .then((res) => {
+      if (opts.blob) {
+        return res.arrayBuffer();
+      }
       if (util.isJsonResponse(res)) {
         return res.json().catch((e) => {
           if (e instanceof SyntaxError) throw errors.invalidJson();
@@ -867,9 +864,11 @@ function responseFailureCheck(res) {
       ? res.headers.get('content-length')
       : res.headers && res.headers['content-length'];
   const emptyBody =
-    (contentLength !== undefined && contentLength !== null && String(contentLength) === '0') ||
-    (res.status === 204 || res.status === 205);
-  if (emptyBody) {
+    contentLength !== undefined &&
+    contentLength !== null &&
+    String(contentLength) === '0';
+  const notSuccess = res.status < 200 || res.status >= 300;
+  if (emptyBody && notSuccess) {
     const err = new Error(
       'Salesforce returned no body and status code ' + res.status
     );

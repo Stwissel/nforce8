@@ -2,637 +2,536 @@
 
 ## Executive Summary
 
-nforce8 is a Node.js REST API wrapper for Salesforce (Promise-based, Node 22+). The codebase spans 9 source files totalling approximately 1,660 lines. All 89 tests pass; the project is functionally sound. The smells catalogued below represent remaining structural, design, and readability debt — not runtime defects.
+**Project**: nforce8 — Node.js REST API wrapper for Salesforce (Promise-based, Node 22+)
+**Languages**: JavaScript (CommonJS modules), Node.js 22+
+**Analysis Date**: 2026-03-23
+**Files Analyzed**: 9 source files (1,627 total lines)
+**Scope**: Remaining issues after the recent refactoring sprint
 
-- **Total issues found**: 31
-- **High Severity (Architectural)**: 7
-- **Medium Severity (Design)**: 14
-- **Low Severity (Readability/Maintenance)**: 10
-- **Overall Grade**: C
+| Severity | Count |
+|----------|-------|
+| High (Architectural) | 3 |
+| Medium (Design) | 8 |
+| Low (Readability/Maintenance) | 7 |
+| **Total** | **18** |
+
+The codebase is in materially better shape after the recent sprint. The remaining issues are dominated by one large structural problem (the split `Connection` definition across `index.js` and `lib/connection.js`), one broken feature (multipart upload produces malformed HTTP requests), and a set of smaller consistency and correctness issues.
 
 ---
 
 ## Project Analysis
 
-| File | Lines | Role |
-|---|---|---|
-| `index.js` | 995 | Main entry point — Connection prototype, all API methods |
-| `lib/record.js` | 187 | SObject record wrapper |
-| `lib/connection.js` | 93 | ES6 Connection class + option validation |
-| `lib/fdcstream.js` | 105 | Streaming (Faye/CometD) client |
-| `lib/optionhelper.js` | 113 | Request option assembly |
-| `lib/multipart.js` | 28 | Multipart body builder |
-| `lib/util.js` | 71 | Header and type utilities |
-| `lib/constants.js` | 47 | Named constants and default options |
-| `lib/errors.js` | 21 | Error factory functions |
+### Languages and Frameworks
+- **JavaScript** (CommonJS, `'use strict'` selectively applied)
+- **Node.js 22+** — native `fetch`, `AbortSignal.timeout`, `URL`
+- **Runtime dependencies**: `faye` (streaming), `mime-types` (multipart)
+- **Dev**: `mocha`, `nyc`, `should`, `eslint`
 
-**Languages**: JavaScript (CommonJS modules), Node 22+
-**Frameworks/Libraries**: Faye (streaming), mime-types, native Fetch API
-**Project type**: Library / API wrapper
+### Project Structure
+
+```
+index.js            994 lines  — Connection constructor + all 46 prototype methods + Plugin system
+lib/connection.js    93 lines  — Stub ES6 class + validateConnectionOptions (partially used)
+lib/record.js       186 lines  — SObject record model
+lib/optionhelper.js 102 lines  — HTTP request options builder
+lib/fdcstream.js    104 lines  — CometD/Faye streaming wrapper
+lib/multipart.js     27 lines  — Multipart payload builder (produces request-library format, not FormData)
+lib/util.js          63 lines  — Type predicates, header utilities
+lib/constants.js     47 lines  — URLs, defaults, CONST values
+lib/errors.js        11 lines  — Error factory functions
+```
+
+### Key Architectural Observation
+
+`index.js` at 994 lines is the single largest concern in the codebase. It contains the `Connection` constructor, 46 prototype methods spanning authentication, CRUD, query, search, streaming, blob retrieval, and HTTP infrastructure, plus the `Plugin` system. A `lib/connection.js` exists with an ES6 `class Connection` stub and a `// TODO turn into ES6 class` comment in `index.js` line 23, confirming the migration was started but never completed.
 
 ---
 
 ## High Severity Issues (Architectural Impact)
 
-### H1 — Large Class / God Object: `index.js` Connection (995 lines, 49 prototype methods)
+### H1 — Divergent Change / God Object: `index.js` (994 lines, 46 methods)
 
-**Category**: Bloater — Large Class
-**Source**: Fowler (1999), Jerzyk (2022)
+**Category**: Bloater + Change Preventer
+**Smells**: Large Class, Divergent Change
+**Principle Violations**: Single Responsibility (SOLID-S), High Cohesion (GRASP)
 
-`index.js` defines 49 prototype methods on `Connection` spanning OAuth lifecycle, CRUD operations, query pagination, search, blob retrieval, streaming setup, URL operations, Apex REST, plugin management, and internal HTTP plumbing. This is a textbook God Object.
+`index.js` is responsible for seven distinct concerns simultaneously:
 
-**Violated Principles**:
-- **SRP**: The module simultaneously owns authentication, all REST verb wrappers, pagination, streaming, multipart upload, plugin binding, and error recovery.
-- **OCP**: Adding any new API surface requires modifying this single 995-line file.
-- **GRASP High Cohesion**: Methods from unrelated domains share one prototype and one file.
+1. `Connection` constructor and configuration merging (lines 24–54)
+2. Auth getter/setter methods — `getOAuth`, `setOAuth`, `getUsername`, `setPassword`, etc. (lines 60–90)
+3. OAuth flow methods — `authenticate`, `refreshToken`, `revokeToken`, `getAuthUri` (lines 131–317)
+4. Salesforce REST API methods — 20+ methods for CRUD, query, search, blob, streaming (lines 350–734)
+5. Internal HTTP infrastructure — `_apiRequest`, `_apiAuthRequest`, `_resolveWithRefresh` (lines 762–843)
+6. Module-level HTTP helper functions — `responseFailureCheck`, `unsuccessfulResponseCheck`, `addSObjectAndId`, `respToJson`, `requireForwardSlash` (lines 849–926)
+7. Plugin system — `Plugin` constructor, `Plugin.prototype.fn`, `plugin()` factory (lines 932–969)
 
-**Locations**:
-- `index.js:24–54` — constructor
-- `index.js:60–90` — auth getters/setters (8 trivial accessors)
-- `index.js:404–449` — CRUD methods
-- `index.js:479–530` — blob/binary methods
-- `index.js:536–599` — query handling
-- `index.js:621–639` — search
-- `index.js:649–709` — URL and Apex REST
-- `index.js:715–744` — streaming
-- `index.js:772–846` — internal HTTP layer
-- `index.js:929–970` — plugin system
+Any change to authentication logic, HTTP transport, streaming, the plugin system, or CRUD operations all require touching the same 994-line file. This is the canonical definition of Divergent Change — the module changes for multiple unrelated reasons.
 
-**Refactoring**: Extract `AuthClient`, `CrudClient`, `QueryClient`, `BlobClient`, and `PluginRegistry` as separate modules that the main Connection delegates to. The module boundary already exists for streaming (`fdcstream.js`) — the same pattern should be applied throughout.
+**Location**: `/Users/stw/Code/nforce8/index.js` — entire file
 
----
-
-### H2 — Divergent Change: `index.js` must change for unrelated reasons
-
-**Category**: Change Preventer — Divergent Change
-**Source**: Fowler (1999)
-
-`index.js` must be edited whenever: an OAuth flow changes, a new CRUD verb is added, query pagination logic changes, blob handling changes, a streaming option changes, or the plugin system changes. Every distinct domain drives changes into one file.
-
-**Location**: `index.js` (entire file)
-
-**Refactoring**: Same split as H1. Divergent Change and Large Class are coupled here — resolving H1 eliminates H2.
+**Refactoring**:
+- Complete the ES6 class migration started in `lib/connection.js`
+- Extract `lib/auth.js` for OAuth flows (`authenticate`, `refreshToken`, `revokeToken`, `getAuthUri`)
+- Extract `lib/crud.js` or `lib/api.js` for Salesforce API method groups
+- Extract `lib/http.js` for `_apiRequest`, `_apiAuthRequest`, and the response-check helpers
+- Extract `lib/plugin.js` for the Plugin system
+- `index.js` becomes a thin composition root that wires the modules together and re-exports the public API
 
 ---
 
-### H3 — Parallel Architecture: Two Connection definitions that cannot be reconciled
+### H2 — Incomplete Migration: Parallel `Connection` Definitions Out of Sync
 
-**Category**: Object-Oriented Abuser — Alternative Classes with Different Interfaces
-**Source**: Fowler (1999), Jerzyk (2022)
+**Category**: Object-Oriented Abuser + Dispensable
+**Smells**: Alternative Classes with Different Interfaces, Orphaned Abstraction
+**Principle Violations**: Single Responsibility (SOLID-S), Information Expert (GRASP)
 
-`lib/connection.js` defines a proper ES6 `class Connection` (lines 5–18) with a constructor that mirrors `index.js`. However, `index.js` defines its own `Connection` constructor function (line 24) using the pre-ES6 prototype pattern and imports only `validateConnectionOptions` from `lib/connection.js`. The ES6 class is never instantiated anywhere in the runtime path. The TODO comment at `index.js:23` acknowledges this: `// TODO turn into ES6 class`.
+Two `Connection` definitions coexist and are out of sync:
 
-**Violated Principles**:
-- **DRY**: Constructor logic (`Object.assign({}, CONST.defaultOptions, opts)`, `opts.environment.toLowerCase()`, `opts.mode.toLowerCase()`) is duplicated between `lib/connection.js:11–17` and `index.js:27–33`.
-- **OCP**: The ES6 class cannot be extended or composed because the running codebase ignores it.
+- `lib/connection.js` line 5: `class Connection` with field declarations (`oauth`, `username`, `password`, `securityToken`) and a constructor that calls `validateConnectionOptions`
+- `index.js` line 24: `const Connection = function(opts) { ... }` — the real, fully-implemented constructor with all 46 prototype methods
 
-**Locations**:
-- `lib/connection.js:5–18` — unused ES6 class definition
-- `index.js:23–54` — active prototype-based constructor with the TODO comment
+`index.js` imports **only** `validateConnectionOptions` from `lib/connection.js` (line 11) and ignores the `Connection` class there entirely. The constructor bodies duplicate the same three lines (lines 12–16 of `lib/connection.js` mirror lines 27–34 of `index.js`). The `// TODO turn into ES6 class` comment on line 23 of `index.js` acknowledges the debt explicitly.
 
-**Refactoring**: Complete the migration flagged by the TODO. Move all prototype methods into the ES6 class in `lib/connection.js`, export the completed class, and have `index.js` import and re-export it. Delete the duplicate constructor logic.
+A developer reading `lib/connection.js` sees a `Connection` class with fields and assumes it is canonical. All behavior is actually in `index.js`. This creates a genuine maintenance trap.
 
----
+**Location**:
+- `index.js:11` — imports only `validateConnectionOptions`, not the class
+- `index.js:23` — `// TODO turn into ES6 class`
+- `index.js:24–54` — the real constructor
+- `lib/connection.js:5–17` — duplicate stub constructor
 
-### H4 — Global Mutable Data: `plugins` object in module scope
-
-**Category**: Data Dealer — Global Data / Mutable Data
-**Source**: Martin (2008), Jerzyk (2022)
-
-`const plugins = {}` at `index.js:17` is a module-level mutable registry. Any code that imports `index.js` shares this singleton state across the entire Node.js process. Registering a plugin with the same name in one consumer affects all consumers. This makes test isolation impossible without process restarts, and the shared state is invisible to callers.
-
-**Violated Principles**:
-- **GRASP Low Coupling**: Hidden shared mutable state creates invisible coupling between plugin consumers.
-- **DIP**: Consumers depend on a hidden concrete global rather than an injected registry.
-
-**Location**: `index.js:17`
-
-**Refactoring**: Move the plugin registry into the `Connection` instance so each connection owns its plugin set. Alternatively, expose an explicit `PluginRegistry` class that can be injected or reset in tests.
+**Refactoring**: Complete the migration. Move all prototype methods into the ES6 `class Connection` in `lib/connection.js`, delete the function constructor from `index.js`, and import the completed class.
 
 ---
 
-### H5 — Shotgun Surgery: Sandbox/production endpoint selection duplicated across methods
+### H3 — Broken Feature: Multipart Upload Produces Malformed HTTP Requests
 
-**Category**: Change Preventer — Shotgun Surgery
-**Source**: Fowler (1999)
+**Category**: Functional Abuser + Dispensable
+**Smells**: Side Effects, Speculative Generality
+**Principle Violations**: Protected Variations (GRASP), DRY
 
-The sandbox/production endpoint selection is performed with an inline conditional in four separate methods. Changing the condition — for example, adding a third environment — requires editing each site independently. Additionally, three of the four sites use loose equality (`==`) while one uses strict equality (`===`), creating an inconsistency noted separately.
+`lib/multipart.js` builds an array of part objects in the format used by the deprecated `request` npm library. `index.js` assigns this array to `opts.multipart` (lines 408, 422). `optionhelper.js` detects `opts.multipart` and sets `ropts.headers['content-type'] = 'multipart/form-data'` (line 55). However, the multipart array is **never transferred to `ropts.body`** — `optionhelper.js` only copies `opts.body` to `ropts.body` (line 67), not `opts.multipart`. The native `fetch` call therefore sends a request with a multipart `Content-Type` header and no body.
 
-**Locations**:
-- `index.js:184` — `getAuthUri`: `self.environment == 'sandbox'` (loose equality)
-- `index.js:209` — `authenticate`: `self.environment == 'sandbox'`
-- `index.js:264` — `refreshToken`: `this.environment == 'sandbox'`
-- `index.js:308` — `revokeToken`: `this.environment === 'sandbox'` (strict equality)
+Even if the array were transferred, native `fetch` does not accept arrays of part-descriptor objects. It requires a `FormData` instance. The entire multipart pipeline — `lib/multipart.js`, the `CONST.MULTIPART_TYPES` check in `insert` and `update`, and the header in `optionhelper.js` — is configured but produces broken HTTP requests for Document, Attachment, and ContentVersion uploads.
 
-**Refactoring**: Extract a single `_getLoginUri()` and `_getAuthEndpoint()` helper method on the Connection prototype. All four callers delegate to it.
+**Location**:
+- `index.js:407–411` — `opts.multipart = multipart(opts)` (insert path)
+- `index.js:421–423` — `opts.multipart = multipart(opts)` (update path)
+- `lib/optionhelper.js:54–55` — sets `content-type` header but never sets the body
+- `lib/optionhelper.js:66–68` — copies `opts.body`, never `opts.multipart`
+- `lib/multipart.js:1–25` — builds array in `request`-library format, not `FormData`
 
----
-
-### H6 — Dead Exported Symbol: `isChunkedEncoding` defined but never called
-
-**Category**: Dispensable — Dead Code
-**Source**: Martin (2008), Jerzyk (2022)
-
-`lib/util.js:22–27` defines and exports `isChunkedEncoding`. A search across the entire codebase (source, tests, examples) shows it is exported at line 63 but never imported or invoked anywhere.
-
-**Violated Principle**: YAGNI — the function exists speculatively.
-
-**Location**: `lib/util.js:22–27, 63`
-
-**Refactoring**: Remove the function and its export entry. If streaming chunked transfer detection is needed in the future, add it at that time.
-
----
-
-### H7 — Dead Exported Symbol: `nonJsonResponse` error factory never called
-
-**Category**: Dispensable — Dead Code
-**Source**: Martin (2008)
-
-`lib/errors.js:2–4` defines `nonJsonResponse` and exports it at line 18. No file in the codebase calls `errors.nonJsonResponse()`. The `_apiRequest` path uses `errors.invalidJson()` for all JSON parse failures.
-
-**Location**: `lib/errors.js:2–4, 18`
-
-**Refactoring**: Remove the function and its export. If distinct non-JSON error signalling is later needed, add it then.
+**Refactoring**: Rewrite `lib/multipart.js` to return a `FormData` object. In `optionhelper.js`, when `opts.multipart` is present, set `ropts.body = opts.multipart` (a `FormData` instance) and remove the manual `content-type` override (let `fetch` set it with the auto-generated boundary). Add an integration test covering Document and Attachment insert.
 
 ---
 
 ## Medium Severity Issues (Design Problems)
 
-### M1 — Magic Number / Insecure Hardcoded URL in `getVersions`
+### M1 — Feature Envy: `getApiRequestOptions` in `lib/optionhelper.js`
 
-**Category**: Lexical Abuser — Magic Number
-**Source**: Fowler (1999), Martin (2008)
+**Category**: Coupler
+**Smell**: Feature Envy
+**Principle Violations**: Information Expert (GRASP), Low Coupling (GRASP)
 
-`index.js:353` hardcodes `'http://na1.salesforce.com/services/data/'`. This URL is: (a) HTTP not HTTPS, introducing a protocol downgrade, (b) tied to the NA1 pod which Salesforce can retire or redirect, and (c) inconsistent with the pattern used everywhere else in the codebase, which derives the URL from `opts.oauth.instance_url`.
+`getApiRequestOptions` (lines 15–86) reads 13 distinct fields from the caller's `opts` object: `opts.uri`, `opts.resource`, `opts.oauth`, `opts.method`, `opts.gzip`, `opts.multipart`, `opts.headers`, `opts.body`, `opts.qs`, `opts.requestOpts`, `opts.timeout`, `opts.apiVersion`, `opts.blob`. It is more interested in the Connection's data than in any state of its own. The function is a pure data-transformation pipeline over foreign data, containing no behaviour that belongs to `OptionHelper` intrinsically.
 
-**Location**: `index.js:353`
+**Location**: `lib/optionhelper.js:15–86`
 
-**Refactoring**: Derive the URL from `instance_url` as all other methods do, or at minimum move it to a named constant in `constants.js` and change `http://` to `https://`.
-
----
-
-### M2 — Loose Equality Operator: `==` used in environment and extension comparisons
-
-**Category**: Obfuscator — Complicated Boolean Expression
-**Source**: Martin (2008)
-
-Three of the four environment comparisons use `==` (loose equality) while one uses `===`. Additionally, `lib/fdcstream.js:69` compares `message.ext['replay'] == true` with loose equality. In `'use strict'` modules this is a style inconsistency, but it signals inattention and creates subtle risks when value types are unexpected.
-
-**Locations**:
-- `index.js:184` — `self.environment == 'sandbox'`
-- `index.js:209` — `self.environment == 'sandbox'`
-- `index.js:264` — `this.environment == 'sandbox'`
-- `lib/fdcstream.js:69` — `message.ext['replay'] == true`
-
-**Refactoring**: Replace all `==` with `===` throughout source files.
+**Refactoring**: The `opts` bag is effectively a typed request descriptor. Define an explicit `RequestDescriptor` type or class with a `toFetchOptions()` method. Alternatively, since `getApiRequestOptions` exists entirely to serve `Connection._apiRequest`, move the transformation logic directly into `_apiRequest` (which already has access to all the fields), eliminating the middleman.
 
 ---
 
-### M3 — Inconsistent `let`/`const` Usage
+### M2 — Inconsistent and Incomplete Timeout Handling
 
-**Category**: Lexical Abuser — Inconsistent Style
-**Source**: Martin (2008)
+**Category**: Obfuscator
+**Smell**: Inconsistent Behavior, Dead Code
+**Principle Violations**: Principle of Least Surprise
 
-Many variables declared with `let` are never reassigned and should be `const`. Mixed use obscures which bindings truly vary and makes intent harder to read.
+Timeout is handled correctly in `_apiAuthRequest` via `AbortSignal.timeout(this.timeout)` (index.js lines 767–773). However, `optionhelper.js` lines 81–83 copy `opts.timeout` to `ropts.timeout`. The native `fetch` API has no `timeout` option — `ropts.timeout` is silently ignored by fetch. `_apiRequest` has no `AbortSignal` handling at all.
 
-**Representative Locations**:
-- `lib/multipart.js:4–9` — `let type`, `let entity`, `let name`, `let fileName`, `let isPatch`, `let multipart` — none are reassigned; all should be `const`.
-- `index.js:215–216` — `let bopts = { ... }` — never reassigned after initial assignment.
-- `lib/record.js:136–137` — `let self = this; let changed = {}` — `self` never reassigned; `changed` is mutated but the binding itself is not.
-- `lib/fdcstream.js:7` — `let self = this` — never reassigned.
+The result: authentication requests respect the configured timeout; all other API requests (CRUD, query, search, etc.) do not.
 
-**Refactoring**: Audit all `let` declarations and convert to `const` where the binding is not reassigned.
+**Location**:
+- `lib/optionhelper.js:81–83` — `ropts.timeout = opts.timeout` (silently ignored by fetch)
+- `index.js:767–773` — `AbortSignal.timeout` only in `_apiAuthRequest`
+- `index.js:801–843` — `_apiRequest` has no timeout enforcement
 
----
-
-### M4 — Primitive Obsession: OAuth token as an untyped plain object
-
-**Category**: Data Dealer — Primitive Obsession
-**Source**: Fowler (1999), Jerzyk (2022)
-
-The OAuth token is passed throughout the system as an untyped plain object `{ access_token, refresh_token, instance_url, ... }`. There is no validation of its shape at entry points, no encapsulation of token-related operations, and callers must know internal field names directly. `util.validateOAuth` exists (util.js:57) but is not enforced at API call sites.
-
-**Representative Locations**:
-- `index.js:117` — `data.oauth` used without shape validation
-- `index.js:653` — `opts.oauth.instance_url` accessed directly
-- `lib/fdcstream.js:47` — `opts.oauth.instance_url` accessed directly
-- `lib/fdcstream.js:54` — `opts.oauth.access_token` accessed directly
-- `lib/optionhelper.js:50` — `opts.oauth.access_token` accessed directly
-
-**Refactoring**: Introduce an `OAuthToken` class or value object that enforces the required shape. Call `util.validateOAuth` defensively at the entry points of `_apiRequest` and `_apiAuthRequest`.
+**Refactoring**: Apply the identical `AbortSignal.timeout` pattern used in `_apiAuthRequest` to `_apiRequest`. Remove `ropts.timeout` from `optionhelper.js`.
 
 ---
 
-### M5 — Feature Envy: `optionhelper.js` deeply reads the caller's internal data
+### M3 — Inconsistent `self = this` Alias Usage
 
-**Category**: Coupler — Feature Envy
-**Source**: Fowler (1999)
+**Category**: Lexical Abuser
+**Smell**: Inconsistent Style, Unnecessary Pattern
 
-`getApiRequestOptions` in `lib/optionhelper.js` (lines 15–97) makes over 14 decisions driven entirely by fields from the caller's `opts` object: `opts.uri`, `opts.resource`, `opts.blob`, `opts.method`, `opts.gzip`, `opts.multipart`, `opts.headers`, `opts.body`, `opts.qs`, `opts.requestOpts`, `opts.timeout`, `opts.oauth`, `opts.apiVersion`. The function is more interested in the Connection's data than in its own.
+The `self = this` alias is a pre-ES6 idiom to preserve `this` context inside nested `function` callbacks. Arrow functions bind `this` lexically and make `self` unnecessary. The codebase uses both patterns inconsistently:
 
-**Location**: `lib/optionhelper.js:15–97`
+- `self` declared inside methods where all callbacks are already arrow functions — `index.js:775` (`const self = this` inside `_apiAuthRequest`, where the only use is `self.oauth = jBody` inside a `.then()` arrow callback; `this.oauth` would be equally correct)
+- `self` declared but partially used — `index.js:132` (`const self = this` used for `self.clientId` at line 136, then `this` is used for `this.testAuthEndpoint`, `this.authEndpoint` in the same method without `self`)
+- `self` genuinely needed inside traditional `function` callbacks: `record.js:2, 30`, `fdcstream.js:7, 43`
 
-**Refactoring**: This is a legitimate transformation function, but it should receive a more structured input type (see M4). Alternatively, move it into the Connection class where the data lives — consistent with the GRASP Information Expert principle.
+**Location**:
+- `index.js:25, 132, 206, 255, 550, 706, 775, 802`
+- `lib/record.js:2, 30, 136, 171`
+- `lib/fdcstream.js:7, 43`
 
----
-
-### M6 — `for...in` Loop on Object Headers
-
-**Category**: Object-Oriented Abuser — Inappropriate Iteration
-**Source**: Martin (2008)
-
-`lib/optionhelper.js:71` uses `for (let item in opts.headers)` to copy user-supplied headers. `for...in` iterates over inherited prototype properties unless guarded with `hasOwnProperty`. This is a well-documented JavaScript hazard and is inconsistent with the `for...of Object.keys()` pattern used everywhere else in the codebase.
-
-**Location**: `lib/optionhelper.js:71`
-
-**Refactoring**: Replace with `Object.assign(ropts.headers, opts.headers)` or `Object.keys(opts.headers).forEach(...)`.
+**Refactoring**: For `record.js`, convert nested `function` callbacks to arrow functions and remove all `self` aliases. For `index.js`, audit each `self` declaration — either convert the inner callback to an arrow function (eliminating `self`) or use `self` consistently throughout the method rather than mixing `self` and `this`.
 
 ---
 
-### M7 — Orphaned `request`-Library Options Still Set in `optionhelper.js`
+### M4 — Deprecated Module: `querystring`
 
-**Category**: Dispensable — Dead Code
-**Source**: Jerzyk (2022)
+**Category**: Object-Oriented Abuser
+**Smell**: Incomplete Library Class, Outdated Dependency
+**Principle Violations**: Node.js best practice
 
-`lib/optionhelper.js` sets `ropts.encoding = null` (lines 38, 56), `ropts.preambleCRLF = true` (line 63), `ropts.postambleCRLF = true` (line 64), and `ropts.multipart` (line 62) on the options object passed to native `fetch()`. These are options from the deprecated `request` npm library. The native Fetch API silently ignores all of them. As a result, multipart uploads and gzip handling are set up but have no effect.
+`index.js` line 3 imports `const qs = require('querystring')`. The Node.js `querystring` module is a **legacy module** — its documentation explicitly states it is superseded by the `URLSearchParams` API (WHATWG URL standard). Node 22 ships with `URLSearchParams` as a global without the legacy quirks of `querystring`.
 
-**Violated Principle**: YAGNI — the options do nothing and mislead readers into thinking multipart and gzip are functional via `fetch`.
+`qs` is used at three call sites:
+- `index.js:190` — `qs.stringify(urlOpts)` to build the auth URI query string
+- `index.js:242` — `qs.stringify(bopts)` to build the POST body for `authenticate`
+- `index.js:287` — `qs.stringify(refreshOpts)` to build the POST body for `refreshToken`
 
-**Locations**:
-- `lib/optionhelper.js:38` — `ropts.encoding = null` (blob path)
-- `lib/optionhelper.js:55–56` — `ropts.encoding = null` (gzip path)
-- `lib/optionhelper.js:62–64` — `ropts.multipart`, `ropts.preambleCRLF`, `ropts.postambleCRLF`
+**Location**: `index.js:3, 190, 242, 287`
 
-**Refactoring**: Remove the dead `request`-library options. Implement multipart support using `FormData` and gzip using `Accept-Encoding` with native Node 22 decompression.
-
----
-
-### M8 — `_getOpts` Has an Overloaded, Dead Callback Parameter
-
-**Category**: Bloater — Long Parameter List / Obfuscator
-**Source**: Fowler (1999), Martin (2008)
-
-`Connection.prototype._getOpts` at `index.js:96` accepts `(d, c, opts)` where `d` can be either a function (callback) or a data object, and `c` is the callback when `d` is data. In every single call site visible in the codebase, `c` is always passed as `null` (e.g., `index.js:258, 304, 321, 374, 383, 392`). The callback pathway appears to be legacy code from a pre-Promise API and is now dead.
-
-**Locations**:
-- `index.js:96–125` — method definition with the `if (util.isFunction(d))` type dispatch
-- Every call site: `null` is passed as the second argument throughout
-
-**Refactoring**: Remove the `c` (callback) parameter and the type-dispatch logic on `d`. Simplify to `_getOpts(data, opts = {})`.
+**Refactoring**: Replace `require('querystring')` and all `qs.stringify()` calls with `new URLSearchParams(obj).toString()`. This is a native, non-deprecated API that produces equivalent output for these use cases.
 
 ---
 
-### M9 — `search()` Response Shape Does Not Match Salesforce API Contract
+### M5 — Magic String: Hardcoded Non-HTTPS URL in `getVersions`
 
-**Category**: Obfuscator — Obscured Intent / Dubious Abstraction
-**Source**: Jerzyk (2022)
+**Category**: Lexical Abuser
+**Smell**: Magic Number (string variant), Hardcoded Dependency
+**Principle Violations**: DRY, Protected Variations (GRASP)
 
-`index.js:634` checks `!resp.length` to detect an empty search result. The Salesforce SOSL Search API returns `{ searchRecords: [...] }`, not a bare array. Checking `.length` on a plain object returns `undefined` (falsy), meaning the guard never fires on an empty result set as intended — it would only accidentally fire on a non-object response. The subsequent `resp.map(...)` at line 637 would also fail because the response object has no `map` method.
+`Connection.prototype.getVersions` (index.js lines 350–355) hardcodes `'http://na1.salesforce.com/services/data/'` as the endpoint. This is problematic in three distinct ways:
 
-**Location**: `index.js:633–638`
+1. **HTTP not HTTPS** — Salesforce requires HTTPS for all API traffic
+2. **Hardcoded pod** — `na1` is a specific legacy North American instance pod; this URL is incorrect for all other orgs
+3. **Bypasses configuration** — all other methods use `opts.oauth.instance_url` or the configurable `loginUri`/`testLoginUri` constants; this one does not
 
-**Refactoring**: Align with the actual Salesforce REST Search API response shape. Access `resp.searchRecords`, check `resp.searchRecords.length === 0`, and map over `resp.searchRecords`.
+**Location**: `index.js:352`
 
----
-
-### M10 — `getContentVersionBody` is Unreachable Dead Code
-
-**Category**: Dispensable — Dead Code
-**Source**: Martin (2008)
-
-`index.js:514–521` defines `Connection.prototype.getContentVersionBody`. However, `getBody()` at `index.js:479–494` routes `contentversion` types to `getContentVersionData` (line 490), not `getContentVersionBody`. `getContentVersionBody` is never called anywhere in the codebase — the public router bypasses it entirely.
-
-**Location**: `index.js:514–521`
-
-**Refactoring**: Either remove `getContentVersionBody` if it is truly dead, or correct the routing in `getBody` to call it where appropriate. The naming difference (`body` vs `versiondata`) suggests the distinction is intentional, making the routing likely a bug.
+**Refactoring**: Replace with `opts.oauth.instance_url + '/services/data/'` to retrieve API versions for the authenticated org's actual instance. If the intent is a public endpoint (discovery before auth), use `CONST.LOGIN_URI.replace('/oauth2/token', '/data/')` or a named constant, and use HTTPS.
 
 ---
 
-### M11 — `apexRest` Accesses Raw `data` Parameter After Processing Through `_getOpts`
+### M6 — Flag Argument: `_getPayload(changedOnly)`
 
-**Category**: Obfuscator — Inconsistent Intent
-**Source**: Martin (2008)
+**Category**: Bloater
+**Smells**: Flag Argument, Boolean Blindness
+**Principle Violations**: Single Responsibility, Clarity at call site
 
-`apexRest` at `index.js:695–709` calls `this._getOpts(data, null, { singleProp: 'uri' })` to produce `opts`, but then accesses `data.uri` directly at line 703 instead of `opts.uri`. The `singleProp: 'uri'` option that `_getOpts` was supposed to apply is therefore never used for its stated purpose. This is inconsistent with every other method in the file, which only accesses `opts` after calling `_getOpts`.
+`Record.prototype._getPayload(changedOnly)` (record.js line 170) takes a boolean flag that fundamentally changes the shape of the returned data. At call sites the boolean value has no intrinsic meaning without reading the method signature:
 
-**Location**: `index.js:703` — `data.uri.substring(0, 1)` should be `opts.uri.substring(0, 1)`
+- `index.js:410` — `opts.sobject._getPayload(false)` — returns all fields (insert)
+- `index.js:424` — `opts.sobject._getPayload(true)` — returns only changed fields (update)
+- `index.js:436` — `opts.sobject._getPayload(false)` — returns all fields (upsert)
+- `lib/multipart.js:14` — `opts.sobject._getPayload(isPatch)` — slightly better (named variable)
+- `lib/record.js:158` — `this._getPayload(false)`
 
-**Refactoring**: Replace `data.uri` with `opts.uri` at line 703.
+**Location**: `lib/record.js:170`, `index.js:410, 424, 436`, `lib/multipart.js:14`
 
----
-
-### M12 — `_queryHandler` Re-processes Already-Processed `opts` via `_getOpts`
-
-**Category**: Obfuscator — Obscured Intent
-**Source**: Fowler (1999)
-
-`query` (line 536) and `queryAll` (line 548) each call `this._getOpts(data, ...)` to produce an `opts` object, then pass it directly to `_queryHandler`. Inside `_queryHandler` (line 563), `this._getOpts(data)` is called again on the same already-processed object, running the option-processing logic twice. This is confusing and fragile.
-
-**Location**: `index.js:560–565`
-
-**Refactoring**: Remove the `_getOpts` call inside `_queryHandler`. Rename the parameter from `data` to `opts` to make the intent clear that a processed object is expected.
+**Refactoring**: Replace with two distinct methods: `_getFullPayload()` and `_getChangedPayload()`. The `multipart.js` pattern of an `isPatch` named variable is the right direction — the same named variable (or enum-like const) should be used at all call sites. Alternatively, name the methods `_getInsertPayload()` and `_getUpdatePayload()` to match their Salesforce semantics.
 
 ---
 
-### M13 — `responseFailureCheck` Duplicates Header Access Logic Already in `util.js`
+### M7 — Configured but Non-Functional `gzip` Option
 
-**Category**: Dispensable — Duplicated Code
-**Source**: Fowler (1999)
+**Category**: Dispensable
+**Smell**: Speculative Generality
+**Principle Violations**: YAGNI
 
-`responseFailureCheck` at `index.js:856–868` manually implements the `typeof res.headers.get === 'function' ? res.headers.get(...) : res.headers[...]` pattern twice — once for the `error` header and once for `content-length`. This is exactly the dual-path header access logic that `util.checkHeaderCaseInsensitive` was written to encapsulate, but `checkHeaderCaseInsensitive` is not exported from `util.js`.
+`optionhelper.js` sets `Accept-Encoding: gzip` when `opts.gzip === true` (lines 49–51). This tells the server to send compressed responses. However, Node.js native `fetch` does **not** automatically decompress gzip responses. If the server honours the header, the response body will be a compressed binary stream that `res.json()` and `res.text()` will fail to parse. The `gzip` option is validated in `lib/connection.js` (line 65) and present in `CONST.defaultOptions` (line 36 of `constants.js`), giving users the impression that gzip compression is a functional, supported feature.
 
-**Location**: `index.js:856–868`
+**Location**:
+- `lib/connection.js:65` — validates `gzip` is boolean
+- `lib/constants.js:36` — `gzip: false` in defaults
+- `lib/optionhelper.js:49–51` — sets `Accept-Encoding` header
 
-**Refactoring**: Export a `getHeader(headers, key)` function from `util.js` and use it in `responseFailureCheck` to eliminate the inline ternary duplication.
+**Refactoring**: Either implement actual decompression (use `DecompressionStream` on the response body, available natively in Node 22+), or remove the `gzip` option entirely with a clear changelog entry. Leaving it as a validated-but-broken option is more harmful than removing it.
 
 ---
 
-### M14 — Deprecated `querystring` Module Still Imported
+### M8 — `_changed` Array: O(n) Membership Tests on Every `set()`
 
-**Category**: Other — Incomplete Library / Deprecated Dependency
-**Source**: Node.js docs
+**Category**: Functional Abuser
+**Smells**: Primitive Obsession, Imperative Loops
+**Principle Violations**: Information Expert (GRASP), performance correctness
 
-`index.js:3` imports `const qs = require('querystring')`. Node.js marked `querystring` as a legacy module in v16 and recommends `URLSearchParams` instead. The project requires Node 22+. `optionhelper.js` already uses `url.URL` with `result.searchParams.append`, establishing the modern pattern.
+`Record._changed` is maintained as an **Array** but used exclusively for membership testing (`_changed.includes(key)`) and iteration. `Array.includes()` is O(n). On every `set()` call, `_changed.includes(key)` is called inside a loop over the incoming fields (record.js line 48). For records with many fields or many successive `set()` operations, the cost is quadratic. The same O(n) lookup appears in `_getPayload` (line 175) and `hasChanged` (line 128). Additionally, the guard on line 48 (`if (!self._changed.includes(key))`) is necessary only because `_changed` is an array — if it were a `Set`, duplicates would be rejected automatically.
 
-**Location**: `index.js:3` — used at lines 190, 243, 288
+**Location**: `lib/record.js:5, 48, 128, 166, 175`
 
-**Refactoring**: Replace `qs.stringify(...)` calls with `new URLSearchParams({...}).toString()`. Align with the idiom already established in `optionhelper.js`.
+**Refactoring**: Replace the `_changed` Array with a `Set`. `Set.has()` is O(1), `Set.add()` deduplicates automatically (eliminating the `includes()` guard on line 48), and `Set` iterates cleanly. The `_reset()` method becomes `this._changed = new Set()`. This simplifies all three impacted methods and improves performance.
 
 ---
 
 ## Low Severity Issues (Readability / Maintenance)
 
-### L1 — `self = this` Anti-Pattern Throughout
+### L1 — Inconsistent Object Definition Styles
 
-**Category**: Lexical Abuser — Unnecessary Variable
-**Source**: Martin (2008)
+**Category**: Lexical Abuser
+**Smell**: Inconsistent Style
 
-The `let self = this` pattern appears 14 times across the source files. This was a pre-ES6 workaround for `this` binding loss inside `function()` callbacks. All of these inner functions can use arrow functions instead, which lexically bind `this` and eliminate the need for `self`.
+Three distinct object-definition styles coexist in the codebase:
+- ES6 `class`: `lib/connection.js`, `lib/fdcstream.js` (Client, Subscription)
+- Prototype-based constructor functions: `index.js` (Connection, Plugin), `lib/record.js` (Record — 18 prototype methods)
+- Plain object factory: `lib/optionhelper.js` (OptionHelper returning a frozen object)
 
-**Locations** (all occurrences):
-- `lib/record.js:2, 30, 136, 171`
-- `lib/fdcstream.js:7, 43`
-- `index.js:25, 132, 206, 256, 561, 716, 781, 808`
+`lib/record.js` in particular is entirely prototype-based at 186 lines and would benefit from ES6 class syntax for readability, consistent with `lib/fdcstream.js`.
 
-**Refactoring**: Convert inner `function()` callbacks that reference `self` to arrow functions and delete the `self` variable declaration.
-
----
-
-### L2 — Three Open TODO Comments Representing Unaddressed Design Debt
-
-**Category**: Other — Technical Debt Marker
-**Source**: Martin (2008)
-
-Three TODO comments indicate acknowledged but unaddressed design debt:
-
-- `index.js:23` — `// TODO turn into ES6 class` (this is H3 — the primary remaining design debt)
-- `index.js:220` — `//TODO: Add JWT authentication`
-- `index.js:366` — `//TODO: fix me! let self = this;` — this is stale; the `let self` alias no longer appears on this line, making the comment itself orphaned dead comment
-
-**Locations**: `index.js:23, 220, 366`
-
-**Refactoring**: Address the ES6 class migration (H3). Remove the stale orphaned TODO at line 366. For JWT, either implement it or track it as a GitHub issue and remove the in-code comment.
+**Location**: `lib/record.js:1–186`, `index.js:24–54`, `index.js:932–948`
 
 ---
 
-### L3 — Redundant Boolean Ternary in `multipart.js`
+### L2 — `hasChanged` Overly Complex Control Flow
 
-**Category**: Obfuscator — Clever Code
-**Source**: Martin (2008)
+**Category**: Obfuscator
+**Smell**: Conditional Complexity
 
-`lib/multipart.js:8` writes `let isPatch = opts.method === 'PATCH' ? true : false;`. The ternary is entirely unnecessary: the comparison `opts.method === 'PATCH'` already evaluates to a boolean.
+`Record.prototype.hasChanged` (record.js lines 122–133) uses a nested if/else-if/else chain with a trailing `return false` that adds visual complexity to what is a simple predicate. The logic can be expressed in three flat lines:
 
-**Location**: `lib/multipart.js:8`
+```javascript
+// Current: 12 lines
+Record.prototype.hasChanged = function (field) {
+  if (!this._changed || this._changed.length === 0) {
+    return false;
+  } else if (!field) {
+    return true;
+  } else {
+    if (this._changed.includes(field.toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+};
 
-**Refactoring**: `const isPatch = opts.method === 'PATCH';`
-
----
-
-### L4 — `Record` Constructor Uses Inverted Conditional Logic
-
-**Category**: Obfuscator — Conditional Complexity
-**Source**: Martin (2008)
-
-`lib/record.js:10–18` has the structure: first branch guards against `'attributes'` and `'attachment'` combined, then two subsequent `else if` branches handle them individually. A reader must verify that the three branches are exhaustive and mutually exclusive, which adds cognitive load.
-
-```js
-if (key !== 'attributes' && key !== 'attachment') { ... }
-else if (key === 'attributes') { ... }
-else if (key === 'attachment') { ... }
+// Simplified: 4 lines
+Record.prototype.hasChanged = function (field) {
+  if (!this._changed || this._changed.length === 0) return false;
+  if (!field) return true;
+  return this._changed.includes(field.toLowerCase());
+};
 ```
 
-**Location**: `lib/record.js:10–18`
+**Location**: `lib/record.js:122–133`
 
-**Refactoring**: Lead with the named special cases and fall through to the default:
-```js
-if (key === 'attributes') { ... }
-else if (key === 'attachment') { ... }
-else { ... }
+---
+
+### L3 — `_getOpts` Callback Parameter is Vestigial Dead Code
+
+**Category**: Dispensable
+**Smell**: Dead Code, Speculative Generality
+
+`Connection.prototype._getOpts(d, c, opts)` (index.js lines 96–125) has a second parameter `c` that is captured as a `callback` (line 105) and stored at `data.callback` (line 115). The comment on line 759 states "internal api methods - Promises based, no callbacks." No call site in the entire file passes a callback — all invocations use `this._getOpts(data)`, `this._getOpts(data, null, {...})`, or similar with explicit `null` for the second argument. The entire callback-handling branch (`if (util.isFunction(d))`, the `c`/`callback` variable, and `data.callback`) is unreachable code.
+
+**Location**: `index.js:96–125` — specifically the `c` parameter, `callback` variable, and `data.callback` assignment
+
+**Refactoring**: Remove the `c` parameter and the associated dead branches. Simplify `_getOpts` to a single branch that always treats the first argument as data.
+
+---
+
+### L4 — `previous()` Returns `undefined` for Falsy Previous Values
+
+**Category**: Obfuscator
+**Smell**: Obscured Intent, Truthiness Bug
+
+`Record.prototype.previous` (record.js lines 144–155) uses a truthiness check to decide whether to return a previous value:
+
+```javascript
+if (this._previous[field]) {
+  return this._previous[field];
+} else {
+  return;
+}
+```
+
+This incorrectly returns `undefined` when the previous value was a falsy value such as `0`, `''`, `false`, or `null`. A field previously set to `0` that is then changed to `1` would have `previous('fieldname')` return `undefined` instead of `0`. This is a subtle correctness bug masked by the fact that most Salesforce field values are strings or objects.
+
+**Location**: `lib/record.js:147–151`
+
+**Refactoring**: Replace the truthiness check with an explicit presence check:
+```javascript
+if (field in this._previous) {
+  return this._previous[field];
+}
 ```
 
 ---
 
-### L5 — `Record.prototype.set` Uses `arguments.length` for Method Overloading
+### L5 — `_extensionEnabled` Set on Wrong `this` in `fdcstream.js`
 
-**Category**: Object-Oriented Abuser — Inappropriate Use of `arguments`
-**Source**: Martin (2008)
+**Category**: Data Dealer
+**Smells**: Status Variable, Hidden Dependency
 
-`lib/record.js:32` checks `arguments.length === 2` to detect whether the caller passed `(field, value)` vs `(objectMap)`. Using `arguments.length` for overloading is opaque, incompatible with rest parameters, and creates an implicit API contract invisible in the function signature.
+In `fdcstream.js` lines 66–72, `replayExtension.incoming` is a regular `function` expression. When Faye calls it as a method of `replayExtension`, `this` inside the handler refers to `replayExtension` itself, not the `Client` instance. So `this._extensionEnabled = true` (line 70) sets the property on the `replayExtension` plain object. This property is never read anywhere in the codebase — not in `Client`, `Subscription`, any test, or any other file. It is either a feature stub for replay extension state detection that was never completed, or an accidental write to the wrong object.
 
-**Location**: `lib/record.js:32`
+**Location**: `lib/fdcstream.js:70`
 
-**Refactoring**: Use `typeof field === 'object'` as the discriminator (clearer and already the idiom used elsewhere in the codebase), or split into two distinct named methods.
-
----
-
-### L6 — `Record.prototype.previous` Has Obscured Return Paths
-
-**Category**: Obfuscator — Obscured Intent
-**Source**: Martin (2008)
-
-`lib/record.js:144–155` has a nested if/else where one branch executes `return;` (implicit `undefined`) and another falls off the end without a return statement. The two-level nesting (`if (field)` then `if (typeof field === 'string')`) adds indirection when the type check subsumes the existence check.
-
-**Location**: `lib/record.js:144–155`
-
-**Refactoring**: Flatten: if `field` is a non-empty string, return `this._previous[field] ?? undefined`; otherwise return `this._previous || {}`. Remove the redundant `if (field)` outer check since `typeof field === 'string'` already handles the falsy case.
+**Refactoring**: If replay detection is not yet needed, remove the dead assignment. If it is intended, store the state on the `Client` instance via the captured `self` reference (`self._extensionEnabled = true`), and add the consuming logic.
 
 ---
 
-### L7 — `getAuthUri` Is a Long Method with Repetitive Conditional Pattern
+### L6 — Unnecessary `url` Module Require
 
-**Category**: Bloater — Long Method
-**Source**: Fowler (1999)
+**Category**: Dispensable
+**Smell**: Dead Code (unnecessary import)
 
-`getAuthUri` at `index.js:131–191` is 61 lines consisting of 8 sequential `if` blocks that conditionally append optional URL parameters. The repeated guard-and-assign pattern is verbose and obscures the intent of constructing a URL options object.
+`lib/optionhelper.js` line 4 imports `const url = require('url')` and uses it as `new url.URL(opts.uri)` on line 89. In Node.js 22, `URL` is a global — available without any import, exactly like `fetch` and `AbortSignal`. The `require('url')` serves no purpose.
 
-**Location**: `index.js:131–191`
+**Location**: `lib/optionhelper.js:4, 89`
 
-**Refactoring**: Extract the URL option construction into a `_buildAuthUrlParams(opts)` helper. Use an explicit mapping of optional parameter names to reduce repetition.
-
----
-
-### L8 — `Plugin` Constructor Function Is Pre-ES6 Style
-
-**Category**: Object-Oriented Abuser — Inconsistent Style
-**Source**: Martin (2008)
-
-`index.js:933–948` defines a `Plugin` constructor function with a prototype method. This is the pre-ES6 pattern. The rest of the project uses ES6 classes (`lib/fdcstream.js`, `lib/connection.js`). The `Plugin` definition is inconsistent with the modern patterns already present.
-
-**Location**: `index.js:933–948`
-
-**Refactoring**: Convert to `class Plugin { constructor(opts) { ... } fn(fnName, fn) { ... } }`.
+**Refactoring**: Remove `const url = require('url')` and change `new url.URL(opts.uri)` to `new URL(opts.uri)`.
 
 ---
 
-### L9 — Fallacious Comments: `// Require syntax for Node < 10`
+### L7 — `'use strict'` Applied Inconsistently
 
-**Category**: Lexical Abuser — Fallacious Comment
-**Source**: Jerzyk (2022)
+**Category**: Lexical Abuser
+**Smell**: Inconsistent Style
 
-Four files end with `// Require syntax for Node < 10` before `module.exports`. The project's `package.json` declares `"node": ">=22.0.0"`. The comment is factually wrong and misleads readers into thinking Node 10 compatibility is a concern.
+`'use strict'` appears in `index.js` (line 1), `lib/constants.js` (line 2), and `lib/optionhelper.js` (line 1), but is absent from `lib/record.js`, `lib/util.js`, `lib/errors.js`, `lib/fdcstream.js`, and `lib/multipart.js`. In Node.js CommonJS modules, strict mode is not automatic. While unlikely to cause bugs in this well-structured code, the inconsistency creates an uneven baseline.
 
-**Locations**:
-- `lib/record.js:186`
-- `lib/fdcstream.js:101`
-- `lib/multipart.js:27`
-- `lib/errors.js:16`
+**Location**: Missing from `lib/record.js:1`, `lib/util.js:1`, `lib/errors.js:1`, `lib/fdcstream.js:1`, `lib/multipart.js:1`
 
-**Refactoring**: Remove the comment, or replace with `// CommonJS module export` if the distinction from ESM is worth documenting.
+**Refactoring**: Add `'use strict'` to all five CommonJS files for consistency. Alternatively, migrate the project to ESM (`"type": "module"` in `package.json`), where strict mode is automatic and `require` is replaced with `import`.
 
 ---
 
-### L10 — Duplicated JSON Parse Error Handling in Two Request Methods
+## SOLID Principle Violations
 
-**Category**: Dispensable — Duplicated Code
-**Source**: Fowler (1999)
+| Principle | Score (0–10) | Assessment |
+|-----------|-------------|------------|
+| **S** — Single Responsibility | 4 | `index.js` handles 7 distinct concerns (H1). `lib/connection.js` has a duplicate constructor that adds confusion (H2). |
+| **O** — Open/Closed | 7 | `getBody()` uses an if/else type-dispatch chain (index.js:483–491) that requires modification to add a new blob type. The plugin system demonstrates good OCP thinking. |
+| **L** — Liskov Substitution | 10 | No inheritance hierarchy with substitutability concerns. |
+| **I** — Interface Segregation | 8 | No formal interfaces (JavaScript). The overloaded `opts` bag passed to `_getOpts` is a mild violation — callers must know which fields are relevant for each call. |
+| **D** — Dependency Inversion | 7 | `index.js` directly imports concrete modules. Acceptable for a library at this scale; would matter more if unit-testing individual request methods in isolation became a priority. |
 
-Both `_apiAuthRequest` (index.js:794–797) and `_apiRequest` (index.js:818–821) contain identical `.catch` blocks inside `.json()` calls:
+### OCP Detail: `getBody` Type Dispatch
 
-```js
-.catch((e) => {
-  if (e instanceof SyntaxError) throw errors.invalidJson();
-  throw e;
-})
+`Connection.prototype.getBody` (index.js lines 477–492) uses an if/else chain to dispatch to `getDocumentBody`, `getAttachmentBody`, or `getContentVersionData` based on a string type. Adding a new blob type requires modifying `getBody`. A registration-based dispatch map (similar to the plugin system) would be more extensible:
+
+```javascript
+const BODY_GETTERS = {
+  document: 'getDocumentBody',
+  attachment: 'getAttachmentBody',
+  contentversion: 'getContentVersionData'
+};
 ```
 
-**Locations**:
-- `index.js:794–797`
-- `index.js:818–821`
-
-**Refactoring**: Extract a shared `safeJsonParse(res)` function and call it from both sites.
-
 ---
 
-## SOLID Principle Compliance
+## GRASP Principle Assessment
 
-### S — Single Responsibility Principle
-**Score: 4/10**
-
-`index.js` concentrates all responsibilities into one module. Individual extracted modules (`record.js`, `fdcstream.js`, `errors.js`) are well-scoped. `optionhelper.js` handles URI assembly, header construction, and body formatting together but remains manageable.
-
-### O — Open/Closed Principle
-**Score: 6/10**
-
-The plugin system is well-designed for extension without modification. The `getBody()` dispatch via string matching (lines 485–493) is a mild OCP violation — adding a new blob type requires modifying the method body.
-
-### L — Liskov Substitution Principle
-**Score: 9/10**
-
-No inheritance hierarchies present that violate substitutability. `Subscription` and `Client` extend `EventEmitter` correctly and honour its contract.
-
-### I — Interface Segregation Principle
-**Score: 7/10**
-
-No formal interfaces (JavaScript), but the exported surface of each module is reasonably focused. `util.js` exports `isChunkedEncoding` which no consumer uses (H6).
-
-### D — Dependency Inversion Principle
-**Score: 5/10**
-
-The `fetch` global is used directly with no injection point, making HTTP-level testing require `fetch` mocking at the global level. The `faye` client is directly instantiated inside `FDCStream.Client`. The plugin system uses a module-level registry rather than injected dependencies (H4).
-
----
-
-## GRASP Principle Compliance
-
-| Principle | Status | Notes |
-|---|---|---|
-| Information Expert | Partial | `optionhelper.js` processes data it does not own (M5) |
-| Creator | Good | Record is created at appropriate call sites |
-| Controller | Partial | `index.js` acts as a bloated controller (H1) |
-| Low Coupling | Poor | `index.js` couples all subsystems together (H1, H2) |
-| High Cohesion | Poor | `index.js` methods span unrelated domains (H1) |
-| Polymorphism | Good | Plugin system and FDCStream use inheritance correctly |
-| Pure Fabrication | Good | `optionhelper.js`, `util.js`, `errors.js` are appropriate fabrications |
-| Indirection | Good | `optionhelper.js` provides indirection for request assembly |
-| Protected Variations | Partial | Environment endpoint logic not protected behind a single variation point (H5) |
+| Principle | Assessment |
+|-----------|------------|
+| **Information Expert** | Partially violated — `getApiRequestOptions` (M1) reads 13 fields from a foreign object. |
+| **Creator** | Compliant — `createConnection`, `createSObject` are appropriate factory functions. |
+| **Controller** | Partially violated — `index.js` is an oversized controller (H1). |
+| **Low Coupling** | Partially violated — `index.js` imports 8 modules; H3 (broken multipart) is silent coupling to request-library conventions. |
+| **High Cohesion** | Violated — `index.js` has 7 distinct responsibilities (H1). |
+| **Polymorphism** | Minor violation — `getBody` type dispatch (see OCP detail). |
+| **Pure Fabrication** | Compliant — `optionhelper`, `util`, `errors` are appropriate service abstractions. |
+| **Indirection** | Compliant — `optionhelper` provides indirection for request building. |
+| **Protected Variations** | Partially violated — `gzip` (M7) and multipart (H3) are unprotected variation points that silently do nothing. |
 
 ---
 
 ## Impact Assessment
 
-| Severity | Count | Primary Categories |
-|---|---|---|
-| High | 7 | Bloaters (H1), Change Preventers (H2, H5), OO Abusers (H3), Data Dealers (H4), Dispensables (H6, H7) |
-| Medium | 14 | Lexical Abusers (M1, M2, M3, M14), Data Dealers (M4), Couplers (M5), OO Abusers (M6), Dispensables (M7, M10, M13), Obfuscators (M8, M9, M11, M12) |
-| Low | 10 | Lexical Abusers (L1, L5, L9), Technical Debt (L2, L8), Obfuscators (L3, L4, L6), Bloaters (L7), Dispensables (L10) |
+**Total Issues Found**: 18
+- High Severity: 3 (architectural/functional)
+- Medium Severity: 8 (design/correctness)
+- Low Severity: 7 (readability/maintenance)
+
+**Breakdown by Category**:
+
+| Category | Count | Issues |
+|----------|-------|--------|
+| Bloaters | 2 | H1 (Large Class), M6 (Flag Argument) |
+| Change Preventers | 1 | H1 (Divergent Change) |
+| Couplers | 1 | M1 (Feature Envy) |
+| Functional Abusers | 2 | H3 (broken multipart side-effect), M8 (O(n) loops) |
+| Dispensables | 4 | H2 (orphaned stub class), L3 (dead callback), L6 (unnecessary require), M4 (deprecated module) |
+| Lexical Abusers | 4 | M3 (inconsistent self), M4 (deprecated module), M5 (magic URL), L7 (inconsistent strict) |
+| Object-Oriented Abusers | 1 | H2 (split class definition) |
+| Obfuscators | 3 | L2 (complex conditional), L4 (obscured return), M2 (timeout inconsistency) |
+| Other | 2 | M7 (gzip without decompression), L5 (dead state assignment) |
 
 ---
 
 ## Recommendations and Refactoring Roadmap
 
-### Phase 1 — Quick Wins (Low Risk, High Immediate Value)
+### Phase 1 — Fix Broken Functionality (Immediate Priority)
 
-1. **Remove dead code** (H6, H7, M10): Delete `isChunkedEncoding`, `nonJsonResponse`, and `getContentVersionBody`. Zero regression risk.
-2. **Fix `isPatch` ternary** (L3): One-line change in `multipart.js`.
-3. **Replace `for...in`** (M6): One-line change in `optionhelper.js`.
-4. **Remove stale comments** (L9, L2 line 366): Remove `// Require syntax for Node < 10` and the orphaned TODO.
-5. **Replace `==` with `===`** (M2): Mechanical replacement in `index.js` and `fdcstream.js`.
-6. **Fix `apexRest` `data.uri` reference** (M11): One-line correction to use `opts.uri`.
-7. **Extract `safeJsonParse`** (L10): Eliminates duplicated JSON error catch block.
-8. **Fix `isPatch` and `let`-to-`const`** in `multipart.js` (M3, L3): All six variables should be `const`.
+**H3 — Multipart Upload**
+Rewrite `lib/multipart.js` to return a `FormData` object. Update `optionhelper.js` to assign `opts.multipart` to `ropts.body` when multipart is present. Remove the manual `Content-Type` header override (let `fetch` set it with the auto-generated boundary). Add a unit/integration test specifically for `insert` with a Document or Attachment.
 
-### Phase 2 — Design Improvements (Medium Risk, Medium Impact)
+**M2 — Timeout in `_apiRequest`**
+Apply `AbortSignal.timeout(this.timeout)` in `_apiRequest` identically to how it is applied in `_apiAuthRequest`. Remove `ropts.timeout` from `optionhelper.js`. Every request type will then respect the configured timeout.
 
-9. **Replace deprecated `querystring`** (M14): Replace `qs.stringify` with `URLSearchParams`.
-10. **Remove orphaned `request`-library options** (M7): Remove `encoding`, `preambleCRLF`, `postambleCRLF`, `ropts.multipart` from `optionhelper.js`. Implement Fetch-native multipart via `FormData`.
-11. **Fix `_queryHandler` double `_getOpts`** (M12): Rename parameter and remove redundant call.
-12. **Fix `search()` response shape** (M9): Align with Salesforce SOSL API — use `resp.searchRecords`.
-13. **Export `getHeader` from `util.js`** (M13): Eliminate inline header-access ternary duplication.
-14. **Consolidate `self = this` patterns** (L1): Convert inner callbacks to arrow functions throughout.
-15. **Simplify `_getOpts` signature** (M8): Remove the dead callback parameter and type dispatch.
-16. **Convert `Plugin` to ES6 class** (L8): Consistency with codebase direction.
-17. **Extract `_getLoginUri()` helper** (H5): Centralise sandbox/production endpoint selection.
+### Phase 2 — High-Value Quick Wins (Short-term, Low Risk)
 
-### Phase 3 — Architectural Refactoring (Higher Risk, Highest Long-Term Impact)
+**M4 — Deprecated `querystring`**
+Replace `require('querystring')` and all three `qs.stringify()` calls with `new URLSearchParams(obj).toString()`. Mechanical change, no behavior change.
 
-18. **Complete the ES6 class migration** (H3, L2 line 23): Move all prototype methods into `lib/connection.js`. This eliminates the duplicate constructor and satisfies the existing TODO.
-19. **Split `index.js` by responsibility** (H1, H2): Extract `AuthClient`, `CrudClient`, `QueryClient`, `BlobClient` modules. `index.js` becomes a thin public facade.
-20. **Move plugin registry to instance scope** (H4): Eliminate module-level mutable state.
-21. **Introduce OAuthToken value object** (M4): Validate and encapsulate OAuth token shape at entry points.
+**L6 — Unnecessary `url` require**
+Remove `const url = require('url')`, change `new url.URL(...)` to `new URL(...)`. One-line change.
+
+**L4 — `previous()` falsy value bug**
+Replace `if (this._previous[field])` with `if (field in this._previous)` to correctly return falsy previous values.
+
+**M8 — `_changed` Set refactor**
+Replace `_changed` Array with `Set` in `record.js`. Simplifies `set()`, `_reset()`, `hasChanged()`, and `_getPayload()` while improving correctness and performance.
+
+**M7 — `gzip` option**
+Implement decompression using `DecompressionStream` or remove the option entirely with a changelog entry.
+
+### Phase 3 — Architecture (Medium-term)
+
+**H1 + H2 — Complete ES6 class migration and decompose `index.js`**
+This is the highest-leverage change. Move all Connection prototype methods into the ES6 class in `lib/connection.js`. Extract `lib/auth.js`, `lib/http.js`, and `lib/plugin.js`. Reduce `index.js` to a composition root. This eliminates the duplicate constructor (H2), resolves the Divergent Change (H1), and makes individual concerns independently testable.
+
+**M3 — `self` alias cleanup**
+Systematically convert `function` callbacks to arrow functions in `record.js` and `index.js`. Remove all `self` aliases that are not genuinely needed.
+
+**L3 — Remove dead callback scaffolding**
+Remove the `c` parameter and dead branches from `_getOpts`.
+
+**L7 — `'use strict'` consistency**
+Add to the five files that lack it, or migrate to ESM.
+
+### Phase 4 — Design Improvements (Long-term)
+
+**OCP `getBody` dispatch** — Replace if/else chain with a registration map object.
+
+**L5 `_extensionEnabled`** — Implement replay extension detection properly or remove the dead `this._extensionEnabled = true` assignment from the `replayExtension` plain object.
+
+**L1 Style consistency** — Migrate `lib/record.js` and `index.js` Plugin to ES6 class syntax.
+
+**M6 Flag argument** — Split `_getPayload(bool)` into `_getFullPayload()` and `_getChangedPayload()`.
 
 ---
 
-## Appendix: Files Analysed
+## Appendix: Analyzed Files
 
-| File | Lines | Status |
-|---|---|---|
-| `/Users/stw/Code/nforce8/index.js` | 995 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/record.js` | 187 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/connection.js` | 93 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/fdcstream.js` | 105 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/optionhelper.js` | 113 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/multipart.js` | 28 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/util.js` | 71 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/constants.js` | 47 | Fully analysed |
-| `/Users/stw/Code/nforce8/lib/errors.js` | 21 | Fully analysed |
+| File | Lines | Issues |
+|------|-------|--------|
+| `index.js` | 994 | H1, H2, H3 (partial), M2, M3, M4, M5, M6, L3, OCP |
+| `lib/connection.js` | 93 | H2 (parallel stub) |
+| `lib/record.js` | 186 | M3, M6, M8, L1, L2, L4 |
+| `lib/optionhelper.js` | 102 | M1, M2, M7, H3 (partial), L6 |
+| `lib/fdcstream.js` | 104 | M3, L1, L5 |
+| `lib/multipart.js` | 27 | H3 (broken format) |
+| `lib/util.js` | 63 | L7 (missing strict) |
+| `lib/constants.js` | 47 | M7 (gzip default) |
+| `lib/errors.js` | 11 | L7 (missing strict) |
 
-Test files and examples were read for cross-reference only and are not scored as production smells.
+## Appendix: Detection Methodology
 
-## Detection Methodology
+All source files were read in full. Targeted grep patterns verified call-site counts, data flows (tracing `opts.multipart` end-to-end), import chains, and naming patterns. Node.js API deprecation status was verified against Node.js v25 documentation. No source files were modified. The analysis covers only what remains to be improved; issues resolved in the preceding refactoring sprint are explicitly excluded per the analysis brief.
 
-- Full static read of all 9 source files
-- Cross-file grep for: `self = this`, loose equality `==`, `for...in`, `TODO/FIXME`, `http://` URLs, dead exports, duplicated patterns, deprecated module imports
-- Method count via prototype grep (49 methods on `Connection`)
-- Line counting via `wc -l`
-- Smell catalog: Fowler (1999/2018), Martin (2008), Jerzyk (2022)
-- SOLID/GRASP compliance assessed per principle against all code paths
+**Sources**: Martin Fowler (1999/2018) "Refactoring", Robert C. Martin (2008) "Clean Code", Marcel Jerzyk (2022) "Code Smells: A Comprehensive Online Catalog and Taxonomy".

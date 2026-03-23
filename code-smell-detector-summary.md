@@ -2,100 +2,92 @@
 
 ## Critical Issues
 
-**7 High-severity issues found — Immediate attention recommended**
+**3 High-severity issues found — Immediate attention required for one broken feature**
 
 ### Top 3 Problems
 
-1. **God Object / Large Class** — `index.js` is a 995-line file with 49 methods covering authentication, CRUD, search, streaming, blob handling, plugins, and internal HTTP plumbing. Every domain change touches this single file. **Priority: High**
+1. **Broken Multipart Upload (H3)** — Document, Attachment, and ContentVersion inserts/updates send malformed HTTP requests. The multipart payload builder produces an array in the format of the now-removed `request` library; native `fetch` requires a `FormData` object. The body is never attached to the request. **Priority: High**
 
-2. **Parallel Architecture — Two Conflicting Connection Definitions** — `lib/connection.js` contains a complete ES6 class that is never used. `index.js` runs an older pre-ES6 prototype version that duplicates the constructor logic. A TODO comment in the code acknowledges this but it has not been completed. **Priority: High**
+2. **God Object / Divergent Change (H1)** — `index.js` at 994 lines handles 7 unrelated concerns: configuration, authentication, CRUD, query, streaming, HTTP infrastructure, and the plugin system. Every change to any part of the library requires navigating this file. **Priority: High**
 
-3. **Global Mutable State in Plugin Registry** — The plugin registry lives as a module-level variable shared across the entire Node.js process. Plugins registered in one context silently affect all other contexts, making isolation in tests and multi-tenant scenarios fragile. **Priority: High**
+3. **Split Connection Definition (H2)** — Two `Connection` definitions coexist: a complete prototype-based one in `index.js` and an ES6 class stub in `lib/connection.js`. They are out of sync. A `// TODO turn into ES6 class` comment documents the acknowledged but incomplete migration. **Priority: Medium**
 
 ---
 
 ## Overall Assessment
 
-- **Project Size**: 9 source files, ~1,660 lines, JavaScript (CommonJS, Node 22+)
-- **Code Quality Grade**: C
-- **Total Issues**: 31 — High: 7 | Medium: 14 | Low: 10
-- **Overall Complexity**: Medium-High (concentrated in `index.js`)
-- **Test Coverage**: 89 tests passing — functional correctness is good
+- **Project Size**: 9 source files, 1,627 lines, JavaScript (Node.js 22+)
+- **Code Quality Grade**: B
+- **Total Issues**: 18 — High: 3 | Medium: 8 | Low: 7
+- **Overall Complexity**: Medium — one broken feature, one large file, remaining issues are well-scoped
 
 ---
 
 ## Business Impact
 
-- **Technical Debt**: High — the God Object in `index.js` is the dominant concern. Every new Salesforce API feature or behaviour change requires navigating and modifying a nearly 1,000-line file.
-- **Maintenance Risk**: High — the unfinished ES6 migration creates two partially-maintained code paths. The dead `request`-library options and unreachable methods create false confidence that features (multipart upload, gzip) are working when they silently do nothing.
-- **Development Velocity Impact**: Medium — the codebase is otherwise well-structured at the module level. Adding a new API method is straightforward; the risk is accumulating more into the already overloaded `index.js`.
-- **Recommended Priority**: High — Phase 1 quick wins carry near-zero regression risk and can be completed quickly.
+- **Technical Debt**: Medium — the `index.js` size and split Connection definition slow down feature work and onboarding
+- **Maintenance Risk**: Medium — the broken multipart feature and non-functional timeout on API requests (M2) are silent failures with no error thrown
+- **Development Velocity Impact**: Medium — the 994-line `index.js` creates friction for every change; decomposing it would materially speed up development
+- **Recommended Priority**: High for H3 (broken feature) and M2 (broken timeout), Medium for everything else
 
 ---
 
 ## Quick Wins
 
-The following issues can each be fixed in minutes with no functional risk:
+These are low-risk changes with immediate benefit:
 
-- **Remove 3 dead exported functions** (H6, H7, M10): `isChunkedEncoding`, `nonJsonResponse`, `getContentVersionBody` — none are called anywhere. **Priority: High** — reduces confusion about what the library actually does.
-- **Fix `apexRest` data access bug** (M11): Line 703 of `index.js` accesses `data.uri` directly after running it through `_getOpts`, bypassing the option-processing step. **Priority: High** — this is a latent inconsistency that could mask bugs.
-- **Fix `search()` response shape** (M9): The response check `!resp.length` is applied to an object (not an array), so it never fires correctly. The mapping `resp.map(...)` will throw at runtime if the API returns the standard `{ searchRecords: [...] }` shape. **Priority: High** — functional correctness risk.
-- **Replace `for...in` with safe iteration** (M6): `optionhelper.js:71` uses `for...in` on a plain object without `hasOwnProperty` guard. **Priority: Medium** — replace with `Object.assign`.
-- **Remove `request`-library dead options** (M7): `preambleCRLF`, `postambleCRLF`, `encoding: null`, and `multipart` are silently ignored by native `fetch`. **Priority: Medium** — removes misleading code that implies multipart/gzip are working.
-- **Replace deprecated `querystring`** (M14): Node 22 ships `URLSearchParams`; the pattern is already used in `optionhelper.js`. **Priority: Medium** — forward compatibility.
+- **Replace deprecated `querystring` module (M4)**: Replace 3 `qs.stringify()` calls with `new URLSearchParams(obj).toString()`. No behavior change, eliminates use of a legacy Node.js API. **Priority: Low**
+- **Remove unused `url` require (L6)**: `const url = require('url')` is unnecessary in Node 22 where `URL` is global. One-line deletion. **Priority: Low**
+- **Fix `previous()` falsy bug (L4)**: `record.previous('field')` incorrectly returns `undefined` when the previous value was `0`, `''`, or `false`. Fix with an `in` operator check instead of a truthiness check. **Priority: Medium**
+- **Replace `_changed` Array with Set (M8)**: Improves correctness and performance of the Record model. Simplifies four methods. **Priority: Medium**
+- **Fix timeout for API requests (M2)**: Apply `AbortSignal.timeout()` to `_apiRequest` — currently only auth requests respect the configured timeout; all CRUD/query/search requests silently ignore it. **Priority: High**
 
 ---
 
 ## Major Refactoring Needed
 
-- **`index.js` — God Object decomposition**: **Priority: High** — Split into `AuthClient`, `CrudClient`, `QueryClient`, `BlobClient`, and a thin facade. This is the single highest-impact structural improvement. The streaming module (`fdcstream.js`) demonstrates exactly the right pattern to follow.
+- **`index.js` Decomposition (H1 + H2)**: **Priority: Medium** — Split the 994-line file into focused modules (`lib/auth.js`, `lib/http.js`, `lib/plugin.js`) and complete the ES6 class migration in `lib/connection.js`. This is the highest-leverage long-term improvement: it makes individual concerns independently testable, reduces merge conflicts, and makes the codebase navigable for new contributors.
 
-- **Complete ES6 class migration**: **Priority: High** — The TODO at `index.js:23` has been there since the ES6 class was partially written in `lib/connection.js`. Completing this migration eliminates duplicated constructor logic and makes the codebase consistent. It is a prerequisite for the God Object decomposition.
+- **Multipart Upload Rewrite (H3)**: **Priority: High** — Rewrite `lib/multipart.js` to produce a `FormData` object instead of a request-library array, and wire it into the fetch call body. Without this, Document, Attachment, and ContentVersion operations silently send empty-body requests.
 
-- **Plugin registry scoping**: **Priority: Medium** — Moving the registry from module-level to instance-level removes hidden shared state and makes the library safe for multi-connection use cases.
+- **`gzip` Option (M7)**: **Priority: Low** — The `gzip: true` connection option sets the `Accept-Encoding` header but does not decompress responses. It appears to work but will break JSON parsing if a server honours the header. Either implement `DecompressionStream` handling or remove the option.
 
 ---
 
 ## Recommended Action Plan
 
-### Phase 1 — Immediate (Days)
+### Phase 1 — Immediate (Fix Broken Behavior)
+- Rewrite multipart upload to use `FormData` (H3) — affects Document/Attachment/ContentVersion operations
+- Apply `AbortSignal.timeout()` to `_apiRequest` to make timeout work for all requests, not just auth (M2)
+- Fix `previous()` falsy value bug in Record (L4)
 
-- Remove the three dead exported symbols (`isChunkedEncoding`, `nonJsonResponse`, `getContentVersionBody`)
-- Fix `apexRest` to use `opts.uri` instead of `data.uri`
-- Fix `search()` to use `resp.searchRecords`
-- Replace `for...in` with `Object.assign` in `optionhelper.js`
-- Fix the redundant ternary `opts.method === 'PATCH' ? true : false` in `multipart.js`
-- Remove stale `// Require syntax for Node < 10` comments
-- Replace `==` with `===` throughout `index.js` and `fdcstream.js`
-- Extract `safeJsonParse()` helper to remove duplicated JSON error handling
-- Fix all `let` declarations that should be `const` in `multipart.js`
+### Phase 2 — Short-term (Low-Risk Improvements)
+- Replace deprecated `querystring` module with `URLSearchParams` (M4)
+- Remove unnecessary `url` require (L6)
+- Replace `_changed` Array with `Set` in Record (M8)
+- Address or remove the non-functional `gzip` option (M7)
+- Remove dead callback parameter scaffolding from `_getOpts` (L3)
 
-### Phase 2 — Short-Term (Weeks)
+### Phase 3 — Medium-term (Architecture)
+- Complete ES6 class migration and decompose `index.js` into focused modules (H1 + H2)
+- Clean up `self = this` aliases — convert callbacks to arrow functions in `record.js` (M3)
+- Add `'use strict'` to the 5 files that lack it, or migrate to ESM (L7)
 
-- Replace deprecated `querystring` with `URLSearchParams`
-- Remove dead `request`-library options from `optionhelper.js`; implement Fetch-native multipart via `FormData`
-- Remove the dead callback parameter from `_getOpts` and simplify its signature
-- Fix `_queryHandler` to avoid double option processing
-- Export `getHeader` from `util.js` to eliminate duplicated header access logic
-- Convert `self = this` patterns to arrow functions throughout
-- Convert `Plugin` constructor function to an ES6 class
-
-### Phase 3 — Long-Term (Sprints)
-
-- Complete the ES6 class migration: move all 49 prototype methods into `lib/connection.js`
-- Decompose `index.js` into focused modules by domain
-- Move the plugin registry to instance scope
-- Introduce an `OAuthToken` value object to replace the untyped plain object pattern
+### Phase 4 — Long-term (Polish)
+- Convert `lib/record.js` from prototype syntax to ES6 class (L1)
+- Replace `_getPayload(bool)` flag argument with two named methods (M6)
+- Replace `getBody()` if/else chain with a dispatch map (OCP)
+- Remove or implement the `_extensionEnabled` replay detection stub (L5)
 
 ---
 
 ## Key Takeaways
 
-- The codebase is functionally reliable (89 tests pass) and has seen good recent improvements to promise handling and Fetch API compatibility.
-- The primary risk is architectural: one file doing too much, making future changes harder than they need to be.
-- Several features that appear to be supported (multipart upload, gzip response handling) are using dead options that `fetch` silently ignores — this should be investigated to confirm whether these features actually work end-to-end.
-- The quick wins in Phase 1 carry essentially no regression risk and will immediately improve clarity for contributors.
+- The recent refactoring sprint removed substantial debt. The remaining issues are well-contained and most have clear, low-risk fixes.
+- The most urgent issue is the broken multipart upload — it silently sends malformed requests without throwing an error, making it hard to diagnose.
+- The second most urgent issue is that the configured `timeout` has no effect on any request except authentication. Users who set `timeout` on their connection will not be protected from hung CRUD or query requests.
+- The 994-line `index.js` is the dominant maintainability risk. The infrastructure for decomposition already exists (`lib/connection.js` has the class stub), and completing the migration would be the most impactful single investment.
 
 ---
 
-*Detailed technical analysis with file:line references available in `code-smell-detector-report.md`*
+*Detailed technical analysis with exact file and line references available in `code-smell-detector-report.md`*

@@ -156,6 +156,17 @@ describe('api-mock-crud', () => {
         .catch((err) => should.not.exist(err))
         .finally(() => done());
     });
+
+    it('should strip leading slash from uri', (done) => {
+      org
+        .apexRest({ uri: '/sample', oauth: oauth })
+        .then((res) => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal('/services/apexrest/sample');
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
   });
 
   // reset the lastRequest
