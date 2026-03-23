@@ -5,10 +5,13 @@
     "mocha": true
   },
   "extends": "eslint:recommended",
+  "ignorePatterns": ["examples/**"],
   "parserOptions": {
-    "sourceType": "module"
+    "ecmaVersion": 2022,
+    "sourceType": "script"
   },
   "rules": {
+    "quotes": ["error", "single"],
     "no-multi-spaces": [
       "error",
       {
@@ -22,9 +25,6 @@
     "wrap-iife": "error",
     "wrap-regex": "error",
     "yield-star-spacing": "error",
-    "yoda": [
-      "error",
-      "never"
-    ]
+    "yoda": ["error", "never"]
   }
 }

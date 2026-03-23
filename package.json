@@ -47,6 +47,7 @@
     "cookie-parser": "^1.4.7",
     "coveralls": "^3.1.1",
     "dotenv": "^16.4.5",
+    "eslint": "^8.57.1",
     "mocha": "^11.7.5",
     "nyc": "^18.0.0",
     "pug": "^3.0.4",
@@ -60,6 +61,8 @@
     "url": "http://github.com/stwissel/nforce8/issues"
   },
   "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "preversion": "npm test",
     "test": "nyc --reporter=text --reporter=html --reporter=text-lcov --reporter=lcovonly ./node_modules/.bin/mocha --require dotenv/config ./test --reporter spec",
     "postversion": "git push && git push --tags",

@@ -18,7 +18,7 @@ const jsonResponse = (body, code = 200) => {
 describe('api-mock-errors', () => {
   describe('invalid json errors', () => {
     it('should return invalid json error on bad json from authenticate', (done) => {
-      let body = jsonResponse("{myproperty: 'invalid json'$$$$");
+      let body = jsonResponse('{myproperty: \'invalid json\'$$$$');
       api
         .getGoodServerInstance(body)
         .then(() => org.authenticate({ username: 'test', password: 'test' }))
@@ -32,7 +32,7 @@ describe('api-mock-errors', () => {
     });
 
     it('should return invalid json error on bad json from query', (done) => {
-      let body = jsonResponse("{myproperty: 'invalid json'$$$$");
+      let body = jsonResponse('{myproperty: \'invalid json\'$$$$');
       api
         .getGoodServerInstance(body)
         .then(() =>
