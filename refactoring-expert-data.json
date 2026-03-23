@@ -1,0 +1,61 @@
+{
+  "total_recommendations": 20,
+  "priority_matrix": [
+    {"item": "R-04: Fix broken auto-refresh promise chain in unsucessfullResponseCheck", "impact": "H", "complexity": "M", "risk": "M"},
+    {"item": "R-01: Fix search() dead code — recs built but resp resolved instead", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R-02: Use Record.setId() instead of directly writing sobject._fields.id", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R-05: Eliminate all 8 Promise constructor anti-patterns with direct chaining", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R-20: Decompose God Object — extract 44 methods into domain modules", "impact": "H", "complexity": "H", "risk": "H"},
+    {"item": "R-03: Extract MULTIPART_TYPES constant to constants.js, use includes()", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R-06: Extract _resolveWithRefresh helper to deduplicate onRefresh callback block", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R-07: Parameterize four URL helper methods into single _urlRequest helper", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R-08: Parameterize four blob retrieval methods into single _getBlobResource helper", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R-09: Fix apexRest accessing data.uri instead of normalized opts.uri", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R-13: Fix getVersions hardcoded insecure http://na1.salesforce.com URL", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R-19: Remove dead ES6 Connection class from lib/connection.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R-10: Fix _queryHandler calling _getOpts twice on already-processed opts", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R-11: Normalize loose == to strict === for environment and replay comparisons", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R-12: Standardize let opts to const opts throughout index.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R-14: Remove redundant second toLowerCase() call in Record constructor", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R-15: Remove unused self = this variables in createStreamClient and subscribe", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R-16: Simplify boolean ternary to direct assignment in multipart.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R-17: Tighten apiMatch validation to regex /^v\\d+\\.0$/ in connection.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R-18: Remove dead nonJsonResponse and invalidJson factory functions from errors.js", "impact": "L", "complexity": "L", "risk": "L"}
+  ],
+  "risk_distribution": {
+    "low": 18,
+    "medium": 1,
+    "high": 1
+  },
+  "category_distribution": {
+    "Composing Methods": 6,
+    "Moving Features": 2,
+    "Organizing Data": 4,
+    "Simplifying Conditionals": 2,
+    "Simplifying Method Calls": 2,
+    "Dealing with Generalization": 3,
+    "Bug Correctness": 1
+  },
+  "implementation_sequence": [
+    {"order": 1, "item": "R-02: Use Record.setId() instead of directly writing sobject._fields.id", "rationale": "Smallest possible change with immediate correctness improvement — zero risk, fixes encapsulation violation that skips change tracking after insert"},
+    {"order": 2, "item": "R-01: Fix search() dead code — recs built but resp resolved instead", "rationale": "Isolated behavioral fix restoring documented Record-wrapping behavior in search results; no API surface change"},
+    {"order": 3, "item": "R-04: Fix broken auto-refresh promise chain in unsucessfullResponseCheck", "rationale": "Only remaining runtime defect — autoRefresh: true is silently non-functional; must be fixed before anti-pattern cleanup since both touch _apiRequest"},
+    {"order": 4, "item": "R-03: Extract MULTIPART_TYPES constant to constants.js, use includes()", "rationale": "Eliminates duplicated magic string comparison in insert() and update() before any structural work touches those methods"},
+    {"order": 5, "item": "R-09: Fix apexRest accessing data.uri instead of normalized opts.uri", "rationale": "Quick correctness fix — data.uri can throw if data is a plain string; resolves before structural deduplication"},
+    {"order": 6, "item": "R-11: Normalize loose == to strict === for environment and replay comparisons", "rationale": "Mechanical style fix with zero risk; best done early as part of cleanup sweep"},
+    {"order": 7, "item": "R-12: Standardize let opts to const opts throughout index.js", "rationale": "Mechanical style normalization — reduces cognitive load for all subsequent refactoring passes on index.js"},
+    {"order": 8, "item": "R-13: Fix getVersions hardcoded insecure http://na1.salesforce.com URL", "rationale": "Method currently fails for most Salesforce orgs; easy fix with no test risk"},
+    {"order": 9, "item": "R-14: Remove redundant second toLowerCase() call in Record constructor", "rationale": "Single-line fix in a well-tested file; no behavior change"},
+    {"order": 10, "item": "R-15: Remove unused self = this variables in createStreamClient and subscribe", "rationale": "Dead code removal in isolated methods; no behavior impact"},
+    {"order": 11, "item": "R-16: Simplify boolean ternary to direct assignment in multipart.js", "rationale": "Trivial style fix; complete the quick-wins sweep"},
+    {"order": 12, "item": "R-17: Tighten apiMatch validation to regex in connection.js", "rationale": "Validation correctness fix — prevents v54 (without .0) from passing; isolated to validation layer"},
+    {"order": 13, "item": "R-18: Remove dead nonJsonResponse and invalidJson factory functions from errors.js", "rationale": "Dead code removal confirmed by grep — reduces confusion about error handling surface"},
+    {"order": 14, "item": "R-19: Remove dead ES6 Connection class from lib/connection.js", "rationale": "Must remove dead class before R-20 uses that file as the base for migration; eliminates contributor confusion"},
+    {"order": 15, "item": "R-05: Eliminate all 8 Promise constructor anti-patterns with direct chaining", "rationale": "After R-04 the _apiRequest method already uses direct chains; remaining 7 methods are now safe to migrate consistently"},
+    {"order": 16, "item": "R-06: Extract _resolveWithRefresh helper to deduplicate onRefresh callback block", "rationale": "Requires R-05 first — the extracted helper returns a Promise, which only makes sense after both callers use direct .then() chains"},
+    {"order": 17, "item": "R-07: Parameterize four URL helper methods into single _urlRequest helper", "rationale": "Structural deduplication after style cleanup is complete; no dependencies on prior structural refactorings"},
+    {"order": 18, "item": "R-08: Parameterize four blob retrieval methods into single _getBlobResource helper", "rationale": "Pairs naturally with R-07; both reduce method count before the large God Object decomposition"},
+    {"order": 19, "item": "R-10: Fix _queryHandler calling _getOpts twice on already-processed opts", "rationale": "Final structural cleanup of the query pipeline before the God Object decomposition moves it to a dedicated module"},
+    {"order": 20, "item": "R-20: Decompose God Object — extract 44 methods into domain modules", "rationale": "Must be last — requires all correctness fixes, style normalization, and deduplication to be in place so each extracted module starts clean; highest risk and longest duration"}
+  ]
+}

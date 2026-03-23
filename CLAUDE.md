@@ -33,7 +33,7 @@ There is no build step — this is a plain Node.js module with no transpilation.
 
 ### Key Patterns
 
-- **Single vs Multi user mode:** In single mode, OAuth is cached in the connection object. In multi mode, OAuth must be passed with each operation.
+- **Single vs Multi-user mode:** In single mode, OAuth is cached in the connection object. In multi mode, OAuth must be passed with each operation.
 - **Auto token refresh:** Handles INVALID_SESSION_ID and Bad_OAuth_Token errors. Retries once with refreshed token when `autoRefresh: true`.
 - **Plugin system:** Extensible via `nforce.plugin()` to add methods to the Connection prototype.
 - **API version format:** Must be fully-qualified string like `"v45.0"` — bare numbers are rejected.

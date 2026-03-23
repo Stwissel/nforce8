@@ -1,0 +1,90 @@
+{
+  "grade": "C",
+  "total_issues": 31,
+  "severity_distribution": {
+    "high": 7,
+    "medium": 14,
+    "low": 10
+  },
+  "category_distribution": {
+    "Bloaters": 3,
+    "Change Preventers": 2,
+    "Couplers": 1,
+    "Data Dealers": 2,
+    "Dispensables": 8,
+    "Functional Abusers": 0,
+    "Lexical Abusers": 6,
+    "Object-Oriented Abusers": 3,
+    "Obfuscators": 5,
+    "Other": 1
+  },
+  "solid_compliance": {
+    "SRP": 4,
+    "OCP": 6,
+    "LSP": 9,
+    "ISP": 7,
+    "DIP": 5
+  },
+  "top_issues": [
+    {
+      "file": "index.js",
+      "issue": "God Object / Large Class: 995-line file with 49 prototype methods spanning authentication, CRUD, query, search, streaming, blob handling, and plugin management — violates SRP, OCP, and GRASP High Cohesion",
+      "severity": "high",
+      "category": "Bloaters"
+    },
+    {
+      "file": "index.js",
+      "issue": "Divergent Change: the file must be modified for every independent domain concern — OAuth flows, CRUD verbs, query pagination, blob handling, streaming options, and plugin system",
+      "severity": "high",
+      "category": "Change Preventers"
+    },
+    {
+      "file": "lib/connection.js",
+      "issue": "Parallel Architecture: an ES6 Connection class (lines 5-18) exists but is never instantiated; the active code in index.js uses a duplicate pre-ES6 prototype-based constructor — DRY violation and unfinished migration (TODO at index.js:23)",
+      "severity": "high",
+      "category": "Object-Oriented Abusers"
+    },
+    {
+      "file": "index.js",
+      "issue": "Global Mutable Data: the plugins registry (line 17) is a module-level mutable object shared across the entire Node.js process — breaks test isolation and violates DIP",
+      "severity": "high",
+      "category": "Data Dealers"
+    },
+    {
+      "file": "index.js",
+      "issue": "Shotgun Surgery: sandbox/production endpoint selection duplicated across four methods (lines 184, 209, 264, 308) with inconsistent equality operators (== vs ===)",
+      "severity": "high",
+      "category": "Change Preventers"
+    },
+    {
+      "file": "lib/util.js",
+      "issue": "Dead Code: isChunkedEncoding (lines 22-27, 63) is defined and exported but never called anywhere in the codebase — YAGNI violation",
+      "severity": "high",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/errors.js",
+      "issue": "Dead Code: nonJsonResponse (lines 2-4, 18) is defined and exported but never called anywhere in the codebase",
+      "severity": "high",
+      "category": "Dispensables"
+    },
+    {
+      "file": "index.js",
+      "issue": "Hardcoded insecure URL: getVersions() uses http://na1.salesforce.com (line 353) — HTTP not HTTPS, pod-specific, inconsistent with instance_url pattern used everywhere else",
+      "severity": "medium",
+      "category": "Lexical Abusers"
+    },
+    {
+      "file": "index.js",
+      "issue": "Dead Code: getContentVersionBody (lines 514-521) is defined but never routed to by getBody() which calls getContentVersionData instead — unreachable method",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/optionhelper.js",
+      "issue": "Orphaned request-library options: encoding, preambleCRLF, postambleCRLF, and multipart options (lines 38, 55-56, 62-64) are silently ignored by native fetch — multipart upload and gzip appear configured but do not function",
+      "severity": "medium",
+      "category": "Dispensables"
+    }
+  ]
+}
