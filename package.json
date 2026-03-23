@@ -39,7 +39,7 @@
   "main": "index.js",
   "dependencies": {
     "faye": "^1.4.1",
-    "mime": "^4.1.0"
+    "mime-types": "^2.1.35"
   },
   "devDependencies": {
     "@snyk/protect": "^1.1303.1",
