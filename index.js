@@ -851,12 +851,24 @@ Connection.prototype._apiRequest = function (opts) {
 function responseFailureCheck(res) {
   if (!res) {
     throw errors.emptyResponse();
-  } else if (res.headers && res.headers.error) {
-    // Error in the header
-    const err = new Error(res.headers.error);
+  }
+  const headerError =
+    res.headers && typeof res.headers.get === 'function'
+      ? res.headers.get('error')
+      : res.headers && res.headers.error;
+  if (headerError) {
+    const err = new Error(headerError);
     err.statusCode = res.status;
     throw err;
-  } else if (!res.body) {
+  }
+  const contentLength =
+    res.headers && typeof res.headers.get === 'function'
+      ? res.headers.get('content-length')
+      : res.headers && res.headers['content-length'];
+  const emptyBody =
+    (contentLength !== undefined && contentLength !== null && String(contentLength) === '0') ||
+    (res.status === 204 || res.status === 205);
+  if (emptyBody) {
     const err = new Error(
       'Salesforce returned no body and status code ' + res.status
     );

@@ -32,8 +32,8 @@ describe('api-mock-crud', () => {
           res.id.should.equal('001DEADBEEF');
           obj.getId().should.equal('001DEADBEEF');
         })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        .then(() => done())
+        .catch((err) => done(err));
     });
 
     it('should create a proper request on insert', (done) => {

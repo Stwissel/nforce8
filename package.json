@@ -54,7 +54,7 @@
     "should": "^13.2.3"
   },
   "engines": {
-    "node": ">22.0"
+    "node": ">=22.0.0"
   },
   "bugs": {
     "url": "http://github.com/stwissel/nforce8/issues"
