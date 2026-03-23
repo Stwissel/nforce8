@@ -28,7 +28,7 @@ describe('api-mock-errors', () => {
           should.exist(err.type);
           err.type.should.equal('invalid-json');
         })
-        .finally(done());
+        .finally(() => done());
     });
 
     it('should return invalid json error on bad json from query', (done) => {
@@ -44,7 +44,7 @@ describe('api-mock-errors', () => {
           should.exist(err.type);
           err.type.should.equal('invalid-json');
         })
-        .finally(done());
+        .finally(() => done());
     });
   });
 
@@ -63,7 +63,7 @@ describe('api-mock-errors', () => {
           err.type.should.equal('system');
           err.errno.should.equal('ECONNRESET');
         })
-        .finally(done());
+        .finally(() => done());
     });
   });
 });

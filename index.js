@@ -621,7 +621,7 @@ const respToJson = (respCandidate) => {
   try {
     return JSON.parse(respCandidate);
   } catch (e) {
-    console.error(e, respCandidate);
+    throw errors.invalidJson();
   }
 };
 
@@ -802,7 +802,10 @@ Connection.prototype._apiAuthRequest = function (opts) {
         err.statusCode = res.status;
         throw err;
       }
-      return res.json();
+      return res.json().catch((e) => {
+        if (e instanceof SyntaxError) throw errors.invalidJson();
+        throw e;
+      });
     })
     .then((jBody) => {
       if (jBody.access_token && self.mode === 'single') {
@@ -821,7 +824,15 @@ Connection.prototype._apiRequest = function (opts) {
   return fetch(uri, ropts)
     .then((res) => responseFailureCheck(res))
     .then((res) => unsuccessfulResponseCheck(res))
-    .then((res) => (util.isJsonResponse(res) ? res.json() : res.text()))
+    .then((res) => {
+      if (util.isJsonResponse(res)) {
+        return res.json().catch((e) => {
+          if (e instanceof SyntaxError) throw errors.invalidJson();
+          throw e;
+        });
+      }
+      return res.text();
+    })
     .then((body) => addSObjectAndId(body, sobject))
     .catch((err) => {
       if (
