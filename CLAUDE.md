@@ -41,7 +41,7 @@ There is no build step — this is a plain Node.js module with no transpilation.
 ## Testing
 
 - **Framework:** Mocha + should.js assertions + NYC coverage
-- **Mock server:** Tests run against a local Express-based mock Salesforce API (`test/mock/`), not a live org.
+- **Mock server:** Tests run against a local HTTP mock Salesforce API (`test/mock/`), not a live org.
 - **Test files:** `test/crud.js`, `test/query.js`, `test/record.js`, `test/connection.js`, `test/errors.js`, `test/integration.js`, `test/plugin.js`
 
 ## CI/CD
