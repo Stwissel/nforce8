@@ -1,8 +1,6 @@
 'use strict';
 
-const fetch = require('node-fetch');
 const qs = require('querystring');
-const _ = require('lodash');
 const Record = require('./lib/record');
 const FDCStream = require('./lib/fdcstream');
 const util = require('./lib/util');
@@ -26,13 +24,13 @@ const plugins = {};
 const Connection = function (opts) {
   let self = this;
 
-  opts = _.defaults(opts || {}, CONST.defaultOptions);
+  opts = Object.assign({}, CONST.defaultOptions, opts || {});
 
   // convert option values
   opts.environment = opts.environment.toLowerCase();
   opts.mode = opts.mode.toLowerCase();
 
-  self = _.assign(this, opts);
+  Object.assign(this, opts);
 
   // validate options
   validateConnectionOptions(this);
@@ -41,16 +39,16 @@ const Connection = function (opts) {
   this.timeout = parseInt(this.timeout, 10);
 
   // load plugins
-  if (opts.plugins && _.isArray(opts.plugins)) {
+  if (opts.plugins && Array.isArray(opts.plugins)) {
     opts.plugins.forEach(function (pname) {
       if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
       // clone the object
-      self[pname] = _.clone(plugins[pname]._fns);
+      self[pname] = { ...plugins[pname]._fns };
 
       // now bind to the connection object
-      _.forOwn(self[pname], function (fn, key) {
-        self[pname][key] = _.bind(self[pname][key], self);
-      });
+      for (const key of Object.keys(self[pname])) {
+        self[pname][key] = self[pname][key].bind(self);
+      }
     });
   }
 };
@@ -148,7 +146,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.scope) {
-    if (_.isArray(opts.scope)) {
+    if (Array.isArray(opts.scope)) {
       urlOpts.scope = opts.scope.join(' ');
     } else {
       urlOpts.scope = opts.scope;
@@ -164,7 +162,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.prompt) {
-    if (_.isArray(opts.prompt)) {
+    if (Array.isArray(opts.prompt)) {
       urlOpts.prompt = opts.prompt.join(' ');
     } else {
       urlOpts.prompt = opts.prompt;
@@ -176,14 +174,14 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.urlOpts) {
-    urlOpts = _.assign(urlOpts, opts.urlOpts);
+    Object.assign(urlOpts, opts.urlOpts);
   }
 
   let endpoint;
 
   if (opts.authEndpoint) {
     endpoint = opts.authEndpoint;
-  } else if (self.environment == 'sandbox') {
+  } else if (self.environment === 'sandbox') {
     endpoint = this.testAuthEndpoint;
   } else {
     endpoint = this.authEndpoint;
@@ -192,25 +190,33 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   return endpoint + '?' + qs.stringify(urlOpts);
 };
 
+Connection.prototype._resolveWithRefresh = function (opts, oldOauth) {
+  if (this.onRefresh && opts.executeOnRefresh === true) {
+    return new Promise((resolve, reject) => {
+      this.onRefresh.call(this, opts.oauth, oldOauth, (err) => {
+        if (err) reject(err);
+        else resolve(opts.oauth);
+      });
+    });
+  }
+  return Promise.resolve(opts.oauth);
+};
+
 Connection.prototype.authenticate = function (data) {
   const self = this;
-  const opts = _.defaults(this._getOpts(data), {
-    executeOnRefresh: false,
-    oauth: {}
-  });
+  const opts = Object.assign({ executeOnRefresh: false, oauth: {} }, this._getOpts(data));
 
-  opts.uri = self.environment == 'sandbox' ? this.testLoginUri : this.loginUri;
+  opts.uri = self.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
   opts.method = 'POST';
   opts.headers = {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
 
-  let bopts = {
+  const bopts = {
     client_id: self.clientId,
     client_secret: self.clientSecret
   };
 
-  //TODO: Add JWT authentication
   if (opts.code) {
     bopts.grant_type = 'authorization_code';
     bopts.code = opts.code;
@@ -235,33 +241,14 @@ Connection.prototype.authenticate = function (data) {
 
   opts.body = qs.stringify(bopts);
 
-  const result = new Promise((resolve, reject) => {
-    try {
-      this._apiAuthRequest(opts)
-        .then((res) => {
-          let old = _.clone(opts.oauth);
-          _.assign(opts.oauth, res);
-          if (opts.assertion) {
-            opts.oauth.assertion = opts.assertion;
-          }
-          if (self.onRefresh && opts.executeOnRefresh === true) {
-            self.onRefresh.call(self, opts.oauth, old, function (err3) {
-              if (err3) {
-                reject(err3);
-              } else {
-                resolve(opts.oauth);
-              }
-            });
-          } else {
-            resolve(opts.oauth);
-          }
-        })
-        .catch((err) => reject(err));
-    } catch (e) {
-      reject(e);
+  return this._apiAuthRequest(opts).then((res) => {
+    let old = { ...opts.oauth };
+    Object.assign(opts.oauth, res);
+    if (opts.assertion) {
+      opts.oauth.assertion = opts.assertion;
     }
+    return self._resolveWithRefresh(opts, old);
   });
-  return result;
 };
 
 Connection.prototype.refreshToken = function (data) {
@@ -273,7 +260,7 @@ Connection.prototype.refreshToken = function (data) {
     }
   });
 
-  opts.uri = this.environment == 'sandbox' ? this.testLoginUri : this.loginUri;
+  opts.uri = this.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
   opts.method = 'POST';
 
   const refreshOpts = {
@@ -302,31 +289,14 @@ Connection.prototype.refreshToken = function (data) {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
 
-  const result = new Promise((resolve, reject) => {
-    this._apiAuthRequest(opts)
-      .then((res) => {
-        let old = _.clone(opts.oauth);
-        _.assign(opts.oauth, res);
-        if (opts.assertion) {
-          opts.oauth.assertion = opts.assertion;
-        }
-        if (self.onRefresh && opts.executeOnRefresh === true) {
-          // TODO: remove callback from onRefresh call
-          self.onRefresh.call(self, opts.oauth, old, function (err3) {
-            if (err3) {
-              reject(err3);
-            } else {
-              resolve(opts.oauth);
-            }
-          });
-        } else {
-          resolve(opts.oauth);
-        }
-      })
-      .catch((err) => reject(err));
+  return this._apiAuthRequest(opts).then((res) => {
+    let old = { ...opts.oauth };
+    Object.assign(opts.oauth, res);
+    if (opts.assertion) {
+      opts.oauth.assertion = opts.assertion;
+    }
+    return self._resolveWithRefresh(opts, old);
   });
-
-  return result;
 };
 
 Connection.prototype.revokeToken = function (data) {
@@ -392,7 +362,6 @@ Connection.prototype.getResources = function (data) {
 };
 
 Connection.prototype.getSObjects = function (data) {
-  //TODO: fix me! let self = this;
   let opts = this._getOpts(data);
   opts.resource = '/sobjects';
   opts.method = 'GET';
@@ -435,11 +404,7 @@ Connection.prototype.insert = function (data) {
   let type = opts.sobject.getType();
   opts.resource = '/sobjects/' + type;
   opts.method = 'POST';
-  if (
-    type === 'document' ||
-    type === 'attachment' ||
-    type === 'contentversion'
-  ) {
+  if (CONST.MULTIPART_TYPES.includes(type)) {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(false));
@@ -453,11 +418,7 @@ Connection.prototype.update = function (data) {
   let id = opts.sobject.getId();
   opts.resource = '/sobjects/' + type + '/' + id;
   opts.method = 'PATCH';
-  if (
-    type === 'document' ||
-    type === 'attachment' ||
-    type === 'contentversion'
-  ) {
+  if (CONST.MULTIPART_TYPES.includes(type)) {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(true));
@@ -494,25 +455,19 @@ Connection.prototype.getRecord = function (data) {
   opts.method = 'GET';
 
   if (opts.fields) {
-    if (_.isString(opts.fields)) {
+    if (typeof opts.fields === 'string') {
       opts.fields = [opts.fields];
     }
     opts.resource += '?' + qs.stringify({ fields: opts.fields.join() });
   }
 
-  const result = new Promise((resolve, reject) => {
-    this._apiRequest(opts)
-      .then((resp) => {
-        if (!opts.raw) {
-          resp = new Record(resp);
-          resp._reset();
-        }
-        resolve(resp);
-      })
-      .catch((err) => reject(err));
+  return this._apiRequest(opts).then((resp) => {
+    if (!opts.raw) {
+      resp = new Record(resp);
+      resp._reset();
+    }
+    return resp;
   });
-
-  return result;
 };
 
 /*****************************
@@ -549,15 +504,6 @@ Connection.prototype.getDocumentBody = function (data) {
   let opts = this._getOpts(data);
   let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
   opts.resource = '/sobjects/document/' + id + '/body';
-  opts.method = 'GET';
-  opts.blob = true;
-  return this._apiRequest(opts);
-};
-
-Connection.prototype.getContentVersionBody = function (data) {
-  let opts = this._getOpts(data);
-  let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
-  opts.resource = '/sobjects/contentversion/' + id + '/body';
   opts.method = 'GET';
   opts.blob = true;
   return this._apiRequest(opts);
@@ -616,44 +562,35 @@ Connection.prototype._queryHandler = function (data) {
     q: opts.query
   };
 
-  const result = new Promise((resolve, reject) => {
-    // Separate function definition
-    // since it might get called recursive
-    function handleResponse(respCandidate) {
-      let resp = respToJson(respCandidate);
-      if (resp.records && resp.records.length > 0) {
-        _.each(resp.records, function (r) {
-          if (opts.raw) {
-            recs.push(r);
-          } else {
-            let rec = new Record(r);
-            rec._reset();
-            recs.push(rec);
-          }
-        });
-      }
-      if (opts.fetchAll && resp.nextRecordsUrl) {
-        self
-          .getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
-          .then((res2) => handleResponse(res2))
-          .catch((err) => reject(err));
-      } else {
-        resp.records = recs;
-        return resolve(resp);
-      }
+  function handleResponse(respCandidate) {
+    let resp = respToJson(respCandidate);
+    if (resp.records && resp.records.length > 0) {
+      resp.records.forEach(function (r) {
+        if (opts.raw) {
+          recs.push(r);
+        } else {
+          let rec = new Record(r);
+          rec._reset();
+          recs.push(rec);
+        }
+      });
     }
+    if (opts.fetchAll && resp.nextRecordsUrl) {
+      return self
+        .getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
+        .then((res2) => handleResponse(res2));
+    }
+    resp.records = recs;
+    return resp;
+  }
 
-    this._apiRequest(opts)
-      .then((resp) => handleResponse(resp))
-      .catch((err) => reject(err));
-  });
-
-  return result;
+  return this._apiRequest(opts).then((resp) => handleResponse(resp));
 };
 
 /**
- * If it hasn't been discovered on the header
- * try to convert it to object here
+ * If it hasn't been discovered on the header, try to convert it to object here.
+ * @param {string|object} respCandidate - Raw response string or already-parsed object
+ * @returns {object} Parsed JSON object
  */
 const respToJson = (respCandidate) => {
   if (typeof respCandidate === 'object') {
@@ -661,8 +598,8 @@ const respToJson = (respCandidate) => {
   }
   try {
     return JSON.parse(respCandidate);
-  } catch (e) {
-    console.error(e, respCandidate);
+  } catch {
+    throw errors.invalidJson();
   }
 };
 
@@ -682,23 +619,16 @@ Connection.prototype.search = function (data) {
   opts.method = 'GET';
   opts.qs = { q: opts.search };
 
-  const result = new Promise((resolve, reject) => {
-    this._apiRequest(opts)
-      .then((resp) => {
-        if (opts.raw || !resp.length) {
-          resolve(resp);
-        } else {
-          let recs = [];
-          resp.forEach(function (r) {
-            recs.push(new Record(r));
-          });
-          resolve(resp);
-        }
-      })
-      .catch((err) => reject(err));
+  return this._apiRequest(opts).then((resp) => {
+    if (opts.raw) {
+      return resp;
+    }
+    const records = (resp && resp.searchRecords) || [];
+    if (records.length === 0) {
+      return resp;
+    }
+    return { ...resp, searchRecords: records.map((r) => new Record(r)) };
   });
-
-  return result;
 };
 
 function requireForwardSlash(uri) {
@@ -759,11 +689,8 @@ Connection.prototype.apexRest = function (data) {
   let opts = this._getOpts(data, null, {
     singleProp: 'uri'
   });
-  // Allow for data.uri to start with or without a /
-  opts.uri =
-    opts.oauth.instance_url +
-    '/services/apexrest/' +
-    (data.uri.substring(0, 1) === '/' ? data.uri.substring(1) : data.uri);
+  const apexPath = opts.uri.startsWith('/') ? opts.uri.substring(1) : opts.uri;
+  opts.uri = opts.oauth.instance_url + '/services/apexrest/' + apexPath;
   opts.method = opts.method || 'GET';
   if (opts.urlParams) {
     opts.qs = opts.urlParams;
@@ -811,8 +738,6 @@ Connection.prototype.stream = function (data) {
  *****************************/
 
 Connection.prototype.autoRefreshToken = function (data) {
-  const self = this;
-
   const opts = this._getOpts(data, null, {
     defaults: {
       executeOnRefresh: true
@@ -824,23 +749,10 @@ Connection.prototype.autoRefreshToken = function (data) {
     executeOnRefresh: opts.executeOnRefresh
   };
 
-  const result = new Promise((resolve, reject) => {
-    // auto-refresh: refresh token
-    if (opts.oauth.refresh_token) {
-      Connection.prototype.refreshToken
-        .call(self, refreshOpts)
-        .then((res) => resolve(res))
-        .catch((err) => reject(err));
-      // auto-refresh: un/pw
-    } else {
-      Connection.prototype.authenticate
-        .call(self, refreshOpts)
-        .then((res) => resolve(res))
-        .catch((err) => reject(err));
-    }
-  });
-
-  return result;
+  if (opts.oauth.refresh_token || opts.oauth.assertion) {
+    return Connection.prototype.refreshToken.call(this, refreshOpts);
+  }
+  return Connection.prototype.authenticate.call(this, refreshOpts);
 };
 
 /*****************************
@@ -848,81 +760,86 @@ Connection.prototype.autoRefreshToken = function (data) {
  *****************************/
 
 Connection.prototype._apiAuthRequest = function (opts) {
-  const self = this;
-
-  // set timeout
-  if (this.timeout) {
-    opts.timeout = this.timeout;
-  }
-
-  // process request opts
   if (opts.requestOpts) {
-    _.merge(opts, opts.requestOpts);
+    Object.assign(opts, opts.requestOpts);
   }
 
+  if (this.timeout) {
+    const timeoutSignal = AbortSignal.timeout(this.timeout);
+    opts.signal =
+      opts.signal !== undefined
+        ? AbortSignal.any([timeoutSignal, opts.signal])
+        : timeoutSignal;
+  }
+
+  const self = this;
   const uri = opts.uri;
 
-  const result = new Promise((resolve, reject) => {
-    try {
-      fetch(uri, opts)
-        .then((res) => {
-          if (!res) {
-            reject(errors.emptyResponse());
-          } else if (!res.ok) {
-            const err = new Error('Fetch failed:' + res.statusText);
-            err.statusCode = res.status;
-            reject(err);
-          }
-          return res;
-        })
-        .then((res) => res.json())
-        .then((jBody) => {
-          if (jBody.access_token && self.mode === 'single') {
-            self.oauth = jBody;
-          }
-          resolve(jBody);
-        })
-        .catch((err) => reject(err));
-    } catch (e) {
-      reject(e);
-    }
-  });
-  return result;
+  return fetch(uri, opts)
+    .then((res) => {
+      if (!res) {
+        throw errors.emptyResponse();
+      }
+      if (!res.ok) {
+        const err = new Error('Fetch failed:' + res.statusText);
+        err.statusCode = res.status;
+        throw err;
+      }
+      return res.json().catch((e) => {
+        if (e instanceof SyntaxError) throw errors.invalidJson();
+        throw e;
+      });
+    })
+    .then((jBody) => {
+      if (jBody.access_token && self.mode === 'single') {
+        self.oauth = jBody;
+      }
+      return jBody;
+    });
 };
 
 Connection.prototype._apiRequest = function (opts) {
-  /**
-   * options:
-   * - sobject
-   * - uri
-   * - oauth
-   * - multipart
-   * - method
-   * - encoding
-   * - body
-   * - qs
-   * - headers
-   */
-
   const self = this;
   const ropts = optionHelper.getApiRequestOptions(opts);
   const uri = optionHelper.getFullUri(ropts);
   const sobject = opts.sobject;
-  const result = new Promise((resolve, reject) => {
-    try {
-      fetch(uri, ropts)
-        .then((res) => responseFailureCheck(res))
-        .then((res) => unsucessfullResponseCheck(res, self, ropts))
-        .then((res) => (util.isJsonResponse(res) ? res.json() : res.text()))
-        .then((body) => addSObjectAndId(body, sobject))
-        .then((body) => resolve(body))
-        .catch((err) => reject(err));
-    } catch (e) {
-      reject(e);
-    }
-  });
 
-  return result;
+  return fetch(uri, ropts)
+    .then((res) => responseFailureCheck(res))
+    .then((res) => unsuccessfulResponseCheck(res))
+    .then((res) => {
+      if (opts.blob) {
+        return res.arrayBuffer();
+      }
+      if (util.isJsonResponse(res)) {
+        return res.json().catch((e) => {
+          if (e instanceof SyntaxError) throw errors.invalidJson();
+          throw e;
+        });
+      }
+      return res.text();
+    })
+    .then((body) => addSObjectAndId(body, sobject))
+    .catch((err) => {
+      if (
+        err.errorCode &&
+        (err.errorCode === 'INVALID_SESSION_ID' ||
+          err.errorCode === 'Bad_OAuth_Token') &&
+        self.autoRefresh === true &&
+        (opts.oauth.refresh_token ||
+          (self.getUsername() && self.getPassword())) &&
+        !opts._retryCount
+      ) {
+        return Connection.prototype.autoRefreshToken
+          .call(self, opts)
+          .then((res) => {
+            opts._refreshResult = res;
+            opts._retryCount = 1;
+            return Connection.prototype._apiRequest.call(self, opts);
+          });
+      }
+      throw err;
+    });
 };
 
 /*
@@ -932,12 +849,26 @@ Connection.prototype._apiRequest = function (opts) {
 function responseFailureCheck(res) {
   if (!res) {
     throw errors.emptyResponse();
-  } else if (res.headers && res.headers.error) {
-    // Error in the header
-    const err = new Error(res.headers.error);
+  }
+  const headerError =
+    res.headers && typeof res.headers.get === 'function'
+      ? res.headers.get('error')
+      : res.headers && res.headers.error;
+  if (headerError) {
+    const err = new Error(headerError);
     err.statusCode = res.status;
     throw err;
-  } else if (!res.body) {
+  }
+  const contentLength =
+    res.headers && typeof res.headers.get === 'function'
+      ? res.headers.get('content-length')
+      : res.headers && res.headers['content-length'];
+  const emptyBody =
+    contentLength !== undefined &&
+    contentLength !== null &&
+    String(contentLength) === '0';
+  const notSuccess = res.status < 200 || res.status >= 300;
+  if (emptyBody && notSuccess) {
     const err = new Error(
       'Salesforce returned no body and status code ' + res.status
     );
@@ -957,65 +888,41 @@ function addSObjectAndId(body, sobject) {
     if (sobject._reset) {
       sobject._reset();
     }
-    if (body && _.isObject(body) && body.id) {
-      sobject._fields.id = body.id;
+    if (body && typeof body === 'object' && body.id) {
+      sobject.setId(body.id);
     }
   }
   // Done - finally!
   return body;
 }
 
-function unsucessfullResponseCheck(res, self, opts) {
-  // Only interested when stuff went wrong
+function unsuccessfulResponseCheck(res) {
   if (res.ok) {
     return res;
   }
 
-  const e = new Error();
-  e.statusCode = res.status;
-  const body = util.isJsonResponse(res) ? res.json() : res.txt();
+  return (util.isJsonResponse(res) ? res.json() : res.text()).then((body) => {
+    const e = new Error();
+    e.statusCode = res.status;
 
-  // Salesforce sends internal errors as Array
-  if (_.isArray(body) && body.length > 0) {
-    e.message = body[0].message;
-    e.errorCode = body[0].errorCode;
-    e.body = body;
-    // error: string body - Something really went wrong
-  } else if (_.isString(body)) {
-    e.message = body;
-    e.errorCode = body;
-    e.body = body;
-  } else {
-    // Something went totally wrong
-    e.message = 'Salesforce returned an unrecognized error ' + res.status;
-    e.body = body;
-  }
+    // Salesforce sends internal errors as Array
+    if (Array.isArray(body) && body.length > 0) {
+      e.message = body[0].message;
+      e.errorCode = body[0].errorCode;
+      e.body = body;
+      // error: string body - Something really went wrong
+    } else if (typeof body === 'string') {
+      e.message = body;
+      e.errorCode = body;
+      e.body = body;
+    } else {
+      // Something went totally wrong
+      e.message = 'Salesforce returned an unrecognized error ' + res.status;
+      e.body = body;
+    }
 
-  // confirm auto-refresh support
-  if (
-    e.errorCode &&
-    (e.errorCode === 'INVALID_SESSION_ID' ||
-      e.errorCode === 'Bad_OAuth_Token') &&
-    self.autoRefresh === true &&
-    (opts.oauth.refresh_token || (self.getUsername() && self.getPassword())) &&
-    !opts._retryCount
-  ) {
-    // attempt the autorefresh
-    Connection.prototype.autoRefreshToken
-      .call(self, opts)
-      .then((res) => {
-        opts._refreshResult = res;
-        opts._retryCount = 1;
-        return Connection.prototype._apiRequest.call(self, opts);
-      })
-      .catch((err2) => {
-        throw err2;
-      });
-  } else {
     throw e;
-  }
-
-  return res;
+  });
 }
 
 /*****************************
@@ -1025,7 +932,7 @@ function unsucessfullResponseCheck(res, self, opts) {
 function Plugin(opts) {
   this.namespace = opts.namespace;
   this._fns = {};
-  this.util = _.clone(util);
+  this.util = { ...util };
 }
 
 Plugin.prototype.fn = function (fnName, fn) {
@@ -1051,9 +958,7 @@ const plugin = function (opts) {
   if (!opts || !opts.namespace) {
     throw new Error('no namespace provided for plugin');
   }
-  opts = _.defaults(opts, {
-    override: false
-  });
+  opts = Object.assign({ override: false }, opts);
   if (plugins[opts.namespace] && opts.override !== true) {
     throw new Error(
       'a plugin with namespace ' + opts.namespace + ' already exists'

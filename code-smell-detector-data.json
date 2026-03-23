@@ -1,0 +1,89 @@
+{
+  "grade": "B",
+  "total_issues": 18,
+  "severity_distribution": {
+    "high": 3,
+    "medium": 8,
+    "low": 7
+  },
+  "category_distribution": {
+    "Bloaters": 2,
+    "Change Preventers": 1,
+    "Couplers": 1,
+    "Functional Abusers": 2,
+    "Dispensables": 4,
+    "Lexical Abusers": 4,
+    "Object-Oriented Abusers": 1,
+    "Obfuscators": 3,
+    "Other": 2
+  },
+  "solid_compliance": {
+    "SRP": 4,
+    "OCP": 7,
+    "LSP": 10,
+    "ISP": 8,
+    "DIP": 7
+  },
+  "top_issues": [
+    {
+      "file": "index.js + lib/multipart.js + lib/optionhelper.js",
+      "issue": "Broken multipart upload: lib/multipart.js produces a request-library array instead of FormData; optionhelper.js never assigns opts.multipart to ropts.body; Document/Attachment/ContentVersion inserts send empty-body requests silently",
+      "severity": "high",
+      "category": "Functional Abusers"
+    },
+    {
+      "file": "index.js",
+      "issue": "God Object / Divergent Change: 994-line file handles 7 unrelated concerns (constructor, auth getters/setters, OAuth flows, CRUD/query/search/streaming API methods, HTTP infrastructure, HTTP helper functions, Plugin system)",
+      "severity": "high",
+      "category": "Bloaters"
+    },
+    {
+      "file": "index.js + lib/connection.js",
+      "issue": "Parallel Connection definitions: prototype-based constructor in index.js (line 24) and ES6 class stub in lib/connection.js (line 5) are out of sync; only validateConnectionOptions is imported from lib/connection.js; TODO comment acknowledges incomplete migration",
+      "severity": "high",
+      "category": "Object-Oriented Abusers"
+    },
+    {
+      "file": "lib/optionhelper.js + index.js",
+      "issue": "Timeout silently ignored for all API requests: AbortSignal.timeout() is applied only in _apiAuthRequest; _apiRequest has no timeout enforcement; optionhelper.js sets ropts.timeout which fetch ignores",
+      "severity": "medium",
+      "category": "Obfuscators"
+    },
+    {
+      "file": "lib/optionhelper.js",
+      "issue": "Feature Envy: getApiRequestOptions reads 13 distinct fields from the caller's opts object (uri, resource, oauth, method, gzip, multipart, headers, body, qs, requestOpts, timeout, apiVersion, blob)",
+      "severity": "medium",
+      "category": "Couplers"
+    },
+    {
+      "file": "index.js",
+      "issue": "Deprecated querystring module: require('querystring') used at lines 3, 190, 242, 287; superseded by URLSearchParams in Node.js 22",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "index.js",
+      "issue": "Magic string hardcoded URL in getVersions (line 352): http://na1.salesforce.com/services/data/ uses HTTP not HTTPS, hardcodes a legacy pod, and bypasses all configurable endpoint logic",
+      "severity": "medium",
+      "category": "Lexical Abusers"
+    },
+    {
+      "file": "lib/optionhelper.js + lib/constants.js + lib/connection.js",
+      "issue": "Non-functional gzip option: sets Accept-Encoding header but native fetch does not decompress responses; gzip:true will cause JSON parse failures if server honours the header",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/record.js",
+      "issue": "_changed Array uses O(n) Array.includes() for membership testing on every set() call; should be a Set for O(1) has() and automatic deduplication",
+      "severity": "medium",
+      "category": "Functional Abusers"
+    },
+    {
+      "file": "lib/record.js",
+      "issue": "previous() method uses truthiness check (if this._previous[field]) which returns undefined for falsy previous values (0, empty string, false) instead of the actual stored value",
+      "severity": "low",
+      "category": "Obfuscators"
+    }
+  ]
+}

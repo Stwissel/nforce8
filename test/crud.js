@@ -4,7 +4,7 @@ const CONST = require('../lib/constants');
 const apiVersion = CONST.API;
 
 const api = require('./mock/sfdc-rest-api');
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 33333;
 
 let org = nforce.createConnection(api.getClient());
 
@@ -15,6 +15,27 @@ describe('api-mock-crud', () => {
   before((done) => api.start(port, done));
 
   describe('#insert', () => {
+    it('should set the id on sobject after insert', (done) => {
+      let insertResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: '001DEADBEEF', success: true })
+      };
+      let obj = nforce.createSObject('Account', {
+        Name: 'Test Account'
+      });
+      api
+        .getGoodServerInstance(insertResponse)
+        .then(() => org.insert({ sobject: obj, oauth: oauth }))
+        .then((res) => {
+          should.exist(res);
+          res.id.should.equal('001DEADBEEF');
+          obj.getId().should.equal('001DEADBEEF');
+        })
+        .then(() => done())
+        .catch((err) => done(err));
+    });
+
     it('should create a proper request on insert', (done) => {
       let obj = nforce.createSObject('Account', {
         Name: 'Test Account',
@@ -131,6 +152,17 @@ describe('api-mock-crud', () => {
           should.exist(res);
           api.getLastRequest().url.should.equal('/services/apexrest/sample');
           api.getLastRequest().method.should.equal('GET');
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
+
+    it('should strip leading slash from uri', (done) => {
+      org
+        .apexRest({ uri: '/sample', oauth: oauth })
+        .then((res) => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal('/services/apexrest/sample');
         })
         .catch((err) => should.not.exist(err))
         .finally(() => done());

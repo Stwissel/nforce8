@@ -3,7 +3,7 @@
 const nforce = require('../index');
 const should = require('should');
 const api = require('./mock/sfdc-rest-api');
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 33333;
 
 const CONST = require('../lib/constants');
 const apiVersion = CONST.API;
@@ -110,6 +110,85 @@ describe('query', () => {
           should.exist(res);
           api.getLastRequest().url.should.equal(expected);
           verifyAccessToken();
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
+  });
+
+  describe('#search', function () {
+    it('should return Record instances in searchRecords when raw is false', (done) => {
+      let searchResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchRecords: [
+            { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' },
+            { attributes: { type: 'Account' }, Id: '001DEF', Name: 'Test' }
+          ],
+          totalSize: 2
+        })
+      };
+      api
+        .getGoodServerInstance(searchResponse)
+        .then(() =>
+          orgMulti.search({ search: 'FIND {Acme}', oauth: oauth })
+        )
+        .then((res) => {
+          should.exist(res);
+          res.searchRecords.length.should.equal(2);
+          res.searchRecords[0].should.be.instanceOf(nforce.Record);
+          res.searchRecords[0].get('name').should.equal('Acme');
+          res.totalSize.should.equal(2);
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
+
+    it('should return raw results when raw is true', (done) => {
+      let searchResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchRecords: [
+            { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' }
+          ],
+          totalSize: 1
+        })
+      };
+      api
+        .getGoodServerInstance(searchResponse)
+        .then(() =>
+          orgMulti.search({ search: 'FIND {Acme}', oauth: oauth, raw: true })
+        )
+        .then((res) => {
+          should.exist(res);
+          res.searchRecords.length.should.equal(1);
+          res.searchRecords[0].should.not.be.instanceOf(nforce.Record);
+          res.searchRecords[0].Name.should.equal('Acme');
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
+
+    it('should return response as-is when searchRecords is empty', (done) => {
+      let searchResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchRecords: [],
+          totalSize: 0
+        })
+      };
+      api
+        .getGoodServerInstance(searchResponse)
+        .then(() =>
+          orgMulti.search({ search: 'FIND {nothing}', oauth: oauth })
+        )
+        .then((res) => {
+          should.exist(res);
+          res.searchRecords.length.should.equal(0);
+          res.totalSize.should.equal(0);
         })
         .catch((err) => should.not.exist(err))
         .finally(() => done());

@@ -1,0 +1,58 @@
+{
+  "total_recommendations": 19,
+  "priority_matrix": [
+    {"item": "R01: Rewrite multipart upload to use FormData (lib/multipart.js + optionhelper.js)", "impact": "H", "complexity": "M", "risk": "M"},
+    {"item": "R02: Apply AbortSignal.timeout to _apiRequest (index.js + optionhelper.js)", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R03: Fix previous() falsy value bug in record.js", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R04: Replace deprecated querystring with URLSearchParams (index.js)", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R05: Remove unnecessary url module import (optionhelper.js)", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R06: Replace _changed Array with Set in record.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R07: Simplify hasChanged control flow in record.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R08: Fix getVersions magic HTTP URL in index.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R09: Remove dead callback scaffolding from _getOpts in index.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R10: Add use strict to five CommonJS files", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R11: Remove unnecessary self = this aliases in index.js and record.js", "impact": "L", "complexity": "M", "risk": "L"},
+    {"item": "R12: Split _getPayload(bool) into _getFullPayload and _getChangedPayload", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R13: Replace getBody if/else chain with dispatch map object", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R14: Fix _extensionEnabled dead assignment on wrong object in fdcstream.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R15: Implement gzip decompression or remove the gzip option entirely", "impact": "M", "complexity": "M", "risk": "M"},
+    {"item": "R17: Complete ES6 class migration — move all prototype methods into lib/connection.js", "impact": "H", "complexity": "H", "risk": "H"},
+    {"item": "R18: Extract lib/plugin.js — separate Plugin system from index.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R19: Split index.js by responsibility domain into focused modules", "impact": "H", "complexity": "H", "risk": "M"},
+    {"item": "R16: Migrate to ESM modules (deferred — use R10 strict mode addition now)", "impact": "M", "complexity": "H", "risk": "H"}
+  ],
+  "risk_distribution": {
+    "low": 14,
+    "medium": 3,
+    "high": 2
+  },
+  "category_distribution": {
+    "Composing Methods": 5,
+    "Moving Features Between Objects": 4,
+    "Organizing Data": 2,
+    "Simplifying Conditional Expressions": 3,
+    "Simplifying Method Calls": 3,
+    "Dealing with Generalization": 2
+  },
+  "implementation_sequence": [
+    {"order": 1, "item": "R01: Rewrite multipart upload to use FormData", "rationale": "The feature is completely broken — sends a multipart Content-Type header with no body. Fix first before any other changes as it affects real user functionality."},
+    {"order": 2, "item": "R02: Apply AbortSignal.timeout to _apiRequest", "rationale": "Timeout config is silently ignored for all non-auth API calls. Pattern already exists in _apiAuthRequest; direct copy. Apply early as it changes _apiRequest which is touched in later refactors."},
+    {"order": 3, "item": "R03: Fix previous() falsy value bug in record.js", "rationale": "Correctness bug: one-character change (in operator vs truthiness), no design implications. Fix immediately."},
+    {"order": 4, "item": "R04: Replace deprecated querystring with URLSearchParams", "rationale": "Mechanical module replacement. Apply before Phase 4 class migration so the class file starts clean."},
+    {"order": 5, "item": "R05: Remove unnecessary url module import", "rationale": "One-line deletion with no side effects. Include in the same session as R04."},
+    {"order": 6, "item": "R06: Replace _changed Array with Set in record.js", "rationale": "Self-contained change to record.js. Improves performance and simplifies set() guard. Apply before R07 which depends on .size vs .length."},
+    {"order": 7, "item": "R07: Simplify hasChanged control flow in record.js", "rationale": "Apply after R06 so the simplified version uses .size and .has() from the Set. Pure readability change."},
+    {"order": 8, "item": "R08: Fix getVersions magic HTTP URL", "rationale": "Corrects wrong behavior for all non-na1 orgs. Mechanical change, no dependencies."},
+    {"order": 9, "item": "R09: Remove dead callback scaffolding from _getOpts", "rationale": "Simplifies _getOpts before R17 class migration moves all call sites. Easier to verify all 30+ callers are updated if the signature is clean first."},
+    {"order": 10, "item": "R10: Add use strict to five CommonJS files", "rationale": "Zero-risk consistency fix. Apply before Phase 4 so any latent issues surface in tests immediately."},
+    {"order": 11, "item": "R11: Remove unnecessary self = this aliases in index.js and record.js", "rationale": "Clean up self before the class migration in R17. Arrow function conversion in record.js reduces noise; self aliases in index.js methods become this references."},
+    {"order": 12, "item": "R12: Split _getPayload(bool) into _getFullPayload and _getChangedPayload", "rationale": "Clarifies call sites before R17 moves all prototype methods into the class. The clear method names document intent at each CRUD call site."},
+    {"order": 13, "item": "R13: Replace getBody if/else chain with dispatch map object", "rationale": "Apply before R17 so the map is part of the class file from the start. Low risk, adds extensibility."},
+    {"order": 14, "item": "R14: Fix _extensionEnabled dead assignment in fdcstream.js", "rationale": "Small isolated cleanup. Apply before Phase 4 to prevent dead code migrating into any new modules."},
+    {"order": 15, "item": "R15: Implement gzip decompression or remove the gzip option entirely", "rationale": "Resolve the validated-but-broken option. Decision gates whether constants.js and connection.js validation are updated. Complete before architectural split so the final module structure reflects the resolved state."},
+    {"order": 16, "item": "R18: Extract lib/plugin.js", "rationale": "Self-contained extraction; no dependency on the class migration. Extract first so R17 can immediately require it rather than re-extracting during the larger migration."},
+    {"order": 17, "item": "R17: Complete ES6 class migration — move all prototype methods into lib/connection.js", "rationale": "Foundation for R19. Requires R09 (clean _getOpts signature), R11 (self cleanup), and R18 (plugin module) to be done. Highest single effort item; do on a feature branch."},
+    {"order": 18, "item": "R19: Split index.js by responsibility domain into focused modules", "rationale": "Requires R17 complete. Final architectural step that eliminates the God Object. index.js becomes a thin composition root."},
+    {"order": 19, "item": "R16: Migrate to ESM modules (deferred)", "rationale": "Deferred: requires changes to all require() calls, test infrastructure, and module.exports. Track as a separate initiative after the architectural split stabilizes. R10 (use strict) provides the immediate consistency fix."}
+  ]
+}

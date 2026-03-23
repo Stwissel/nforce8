@@ -1,8 +1,7 @@
-const { resolvePtr } = require('dns');
 const http = require('http');
 const CONST = require('../../lib/constants');
 const apiVersion = CONST.API;
-let port = process.env.PORT || 3000;
+let port = process.env.PORT || 33333;
 let serverStack = [];
 let requestStack = [];
 
@@ -21,10 +20,10 @@ const defaultResponse = {
 
 // Clear out the server
 const clearServerStack = () => {
-  let allPromises = [];
+  const allPromises = [];
   let curServer = serverStack.pop();
   while (curServer) {
-    allPromises.push(curServer.close());
+    allPromises.push(new Promise((resolve) => curServer.close(resolve)));
     curServer = serverStack.pop();
   }
   return Promise.all(allPromises);
@@ -61,8 +60,7 @@ const getGoodServerInstance = (response = defaultResponse) => {
 };
 
 const getClosedServerInstance = () => {
-  const serverListener = (req, res) => {
-    console.log(req.url);
+  const serverListener = (req) => {
     const fatError = new Error('ECONNRESET');
     fatError.type = 'system';
     fatError.errno = 'ECONNRESET';
@@ -101,8 +99,11 @@ const getOAuth = function () {
 const start = (incomingPort, cb) => {
   port = incomingPort;
   getGoodServerInstance()
-    .catch(console.error)
-    .finally(() => cb());
+    .then(() => cb())
+    .catch((err) => {
+      console.error(err);
+      cb(err);
+    });
 };
 const stop = (cb) => {
   clearServerStack()

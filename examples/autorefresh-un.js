@@ -44,7 +44,7 @@ org
             console.log('query ran...looks good');
           },
           function (err) {
-            console.log("bummer, the autorefresh didn't work");
+            console.log('bummer, the autorefresh didn\'t work');
             console.log(err);
           }
         );
