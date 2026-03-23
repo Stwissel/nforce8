@@ -230,33 +230,22 @@ Connection.prototype.authenticate = function (data) {
 
   opts.body = qs.stringify(bopts);
 
-  const result = new Promise((resolve, reject) => {
-    try {
-      this._apiAuthRequest(opts)
-        .then((res) => {
-          let old = { ...opts.oauth };
-          Object.assign(opts.oauth, res);
-          if (opts.assertion) {
-            opts.oauth.assertion = opts.assertion;
-          }
-          if (self.onRefresh && opts.executeOnRefresh === true) {
-            self.onRefresh.call(self, opts.oauth, old, function (err3) {
-              if (err3) {
-                reject(err3);
-              } else {
-                resolve(opts.oauth);
-              }
-            });
-          } else {
-            resolve(opts.oauth);
-          }
-        })
-        .catch((err) => reject(err));
-    } catch (e) {
-      reject(e);
+  return this._apiAuthRequest(opts).then((res) => {
+    let old = { ...opts.oauth };
+    Object.assign(opts.oauth, res);
+    if (opts.assertion) {
+      opts.oauth.assertion = opts.assertion;
     }
+    if (self.onRefresh && opts.executeOnRefresh === true) {
+      return new Promise((resolve, reject) => {
+        self.onRefresh.call(self, opts.oauth, old, function (err3) {
+          if (err3) reject(err3);
+          else resolve(opts.oauth);
+        });
+      });
+    }
+    return opts.oauth;
   });
-  return result;
 };
 
 Connection.prototype.refreshToken = function (data) {
@@ -297,31 +286,22 @@ Connection.prototype.refreshToken = function (data) {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
 
-  const result = new Promise((resolve, reject) => {
-    this._apiAuthRequest(opts)
-      .then((res) => {
-        let old = { ...opts.oauth };
-        Object.assign(opts.oauth, res);
-        if (opts.assertion) {
-          opts.oauth.assertion = opts.assertion;
-        }
-        if (self.onRefresh && opts.executeOnRefresh === true) {
-          // TODO: remove callback from onRefresh call
-          self.onRefresh.call(self, opts.oauth, old, function (err3) {
-            if (err3) {
-              reject(err3);
-            } else {
-              resolve(opts.oauth);
-            }
-          });
-        } else {
-          resolve(opts.oauth);
-        }
-      })
-      .catch((err) => reject(err));
+  return this._apiAuthRequest(opts).then((res) => {
+    let old = { ...opts.oauth };
+    Object.assign(opts.oauth, res);
+    if (opts.assertion) {
+      opts.oauth.assertion = opts.assertion;
+    }
+    if (self.onRefresh && opts.executeOnRefresh === true) {
+      return new Promise((resolve, reject) => {
+        self.onRefresh.call(self, opts.oauth, old, function (err3) {
+          if (err3) reject(err3);
+          else resolve(opts.oauth);
+        });
+      });
+    }
+    return opts.oauth;
   });
-
-  return result;
 };
 
 Connection.prototype.revokeToken = function (data) {
@@ -495,19 +475,13 @@ Connection.prototype.getRecord = function (data) {
     opts.resource += '?' + qs.stringify({ fields: opts.fields.join() });
   }
 
-  const result = new Promise((resolve, reject) => {
-    this._apiRequest(opts)
-      .then((resp) => {
-        if (!opts.raw) {
-          resp = new Record(resp);
-          resp._reset();
-        }
-        resolve(resp);
-      })
-      .catch((err) => reject(err));
+  return this._apiRequest(opts).then((resp) => {
+    if (!opts.raw) {
+      resp = new Record(resp);
+      resp._reset();
+    }
+    return resp;
   });
-
-  return result;
 };
 
 /*****************************
@@ -611,39 +585,29 @@ Connection.prototype._queryHandler = function (data) {
     q: opts.query
   };
 
-  const result = new Promise((resolve, reject) => {
-    // Separate function definition
-    // since it might get called recursive
-    function handleResponse(respCandidate) {
-      let resp = respToJson(respCandidate);
-      if (resp.records && resp.records.length > 0) {
-        resp.records.forEach(function (r) {
-          if (opts.raw) {
-            recs.push(r);
-          } else {
-            let rec = new Record(r);
-            rec._reset();
-            recs.push(rec);
-          }
-        });
-      }
-      if (opts.fetchAll && resp.nextRecordsUrl) {
-        self
-          .getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
-          .then((res2) => handleResponse(res2))
-          .catch((err) => reject(err));
-      } else {
-        resp.records = recs;
-        return resolve(resp);
-      }
+  function handleResponse(respCandidate) {
+    let resp = respToJson(respCandidate);
+    if (resp.records && resp.records.length > 0) {
+      resp.records.forEach(function (r) {
+        if (opts.raw) {
+          recs.push(r);
+        } else {
+          let rec = new Record(r);
+          rec._reset();
+          recs.push(rec);
+        }
+      });
     }
+    if (opts.fetchAll && resp.nextRecordsUrl) {
+      return self
+        .getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
+        .then((res2) => handleResponse(res2));
+    }
+    resp.records = recs;
+    return resp;
+  }
 
-    this._apiRequest(opts)
-      .then((resp) => handleResponse(resp))
-      .catch((err) => reject(err));
-  });
-
-  return result;
+  return this._apiRequest(opts).then((resp) => handleResponse(resp));
 };
 
 /**
@@ -677,23 +641,12 @@ Connection.prototype.search = function (data) {
   opts.method = 'GET';
   opts.qs = { q: opts.search };
 
-  const result = new Promise((resolve, reject) => {
-    this._apiRequest(opts)
-      .then((resp) => {
-        if (opts.raw || !resp.length) {
-          resolve(resp);
-        } else {
-          let recs = [];
-          resp.forEach(function (r) {
-            recs.push(new Record(r));
-          });
-          resolve(resp);
-        }
-      })
-      .catch((err) => reject(err));
+  return this._apiRequest(opts).then((resp) => {
+    if (opts.raw || !resp.length) {
+      return resp;
+    }
+    return resp.map((r) => new Record(r));
   });
-
-  return result;
 };
 
 function requireForwardSlash(uri) {
@@ -806,8 +759,6 @@ Connection.prototype.stream = function (data) {
  *****************************/
 
 Connection.prototype.autoRefreshToken = function (data) {
-  const self = this;
-
   const opts = this._getOpts(data, null, {
     defaults: {
       executeOnRefresh: true
@@ -819,23 +770,10 @@ Connection.prototype.autoRefreshToken = function (data) {
     executeOnRefresh: opts.executeOnRefresh
   };
 
-  const result = new Promise((resolve, reject) => {
-    // auto-refresh: refresh token
-    if (opts.oauth.refresh_token) {
-      Connection.prototype.refreshToken
-        .call(self, refreshOpts)
-        .then((res) => resolve(res))
-        .catch((err) => reject(err));
-      // auto-refresh: un/pw
-    } else {
-      Connection.prototype.authenticate
-        .call(self, refreshOpts)
-        .then((res) => resolve(res))
-        .catch((err) => reject(err));
-    }
-  });
-
-  return result;
+  if (opts.oauth.refresh_token) {
+    return Connection.prototype.refreshToken.call(this, refreshOpts);
+  }
+  return Connection.prototype.authenticate.call(this, refreshOpts);
 };
 
 /*****************************
@@ -843,46 +781,35 @@ Connection.prototype.autoRefreshToken = function (data) {
  *****************************/
 
 Connection.prototype._apiAuthRequest = function (opts) {
-  const self = this;
-
-  // set timeout
   if (this.timeout) {
     opts.timeout = this.timeout;
   }
 
-  // process request opts
   if (opts.requestOpts) {
     Object.assign(opts, opts.requestOpts);
   }
 
+  const self = this;
   const uri = opts.uri;
 
-  const result = new Promise((resolve, reject) => {
-    try {
-      fetch(uri, opts)
-        .then((res) => {
-          if (!res) {
-            reject(errors.emptyResponse());
-          } else if (!res.ok) {
-            const err = new Error('Fetch failed:' + res.statusText);
-            err.statusCode = res.status;
-            reject(err);
-          }
-          return res;
-        })
-        .then((res) => res.json())
-        .then((jBody) => {
-          if (jBody.access_token && self.mode === 'single') {
-            self.oauth = jBody;
-          }
-          resolve(jBody);
-        })
-        .catch((err) => reject(err));
-    } catch (e) {
-      reject(e);
-    }
-  });
-  return result;
+  return fetch(uri, opts)
+    .then((res) => {
+      if (!res) {
+        throw errors.emptyResponse();
+      }
+      if (!res.ok) {
+        const err = new Error('Fetch failed:' + res.statusText);
+        err.statusCode = res.status;
+        throw err;
+      }
+      return res.json();
+    })
+    .then((jBody) => {
+      if (jBody.access_token && self.mode === 'single') {
+        self.oauth = jBody;
+      }
+      return jBody;
+    });
 };
 
 Connection.prototype._apiRequest = function (opts) {
