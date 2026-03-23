@@ -1,7 +1,6 @@
 'use strict';
 
 const qs = require('querystring');
-const _ = require('lodash');
 const Record = require('./lib/record');
 const FDCStream = require('./lib/fdcstream');
 const util = require('./lib/util');
@@ -25,13 +24,13 @@ const plugins = {};
 const Connection = function (opts) {
   let self = this;
 
-  opts = _.defaults(opts || {}, CONST.defaultOptions);
+  opts = Object.assign({}, CONST.defaultOptions, opts || {});
 
   // convert option values
   opts.environment = opts.environment.toLowerCase();
   opts.mode = opts.mode.toLowerCase();
 
-  self = _.assign(this, opts);
+  Object.assign(this, opts);
 
   // validate options
   validateConnectionOptions(this);
@@ -40,16 +39,16 @@ const Connection = function (opts) {
   this.timeout = parseInt(this.timeout, 10);
 
   // load plugins
-  if (opts.plugins && _.isArray(opts.plugins)) {
+  if (opts.plugins && Array.isArray(opts.plugins)) {
     opts.plugins.forEach(function (pname) {
       if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
       // clone the object
-      self[pname] = _.clone(plugins[pname]._fns);
+      self[pname] = { ...plugins[pname]._fns };
 
       // now bind to the connection object
-      _.forOwn(self[pname], function (fn, key) {
-        self[pname][key] = _.bind(self[pname][key], self);
-      });
+      for (const key of Object.keys(self[pname])) {
+        self[pname][key] = self[pname][key].bind(self);
+      }
     });
   }
 };
@@ -147,7 +146,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.scope) {
-    if (_.isArray(opts.scope)) {
+    if (Array.isArray(opts.scope)) {
       urlOpts.scope = opts.scope.join(' ');
     } else {
       urlOpts.scope = opts.scope;
@@ -163,7 +162,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.prompt) {
-    if (_.isArray(opts.prompt)) {
+    if (Array.isArray(opts.prompt)) {
       urlOpts.prompt = opts.prompt.join(' ');
     } else {
       urlOpts.prompt = opts.prompt;
@@ -175,7 +174,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   }
 
   if (opts.urlOpts) {
-    urlOpts = _.assign(urlOpts, opts.urlOpts);
+    Object.assign(urlOpts, opts.urlOpts);
   }
 
   let endpoint;
@@ -193,10 +192,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
 
 Connection.prototype.authenticate = function (data) {
   const self = this;
-  const opts = _.defaults(this._getOpts(data), {
-    executeOnRefresh: false,
-    oauth: {}
-  });
+  const opts = Object.assign({ executeOnRefresh: false, oauth: {} }, this._getOpts(data));
 
   opts.uri = self.environment == 'sandbox' ? this.testLoginUri : this.loginUri;
   opts.method = 'POST';
@@ -238,8 +234,8 @@ Connection.prototype.authenticate = function (data) {
     try {
       this._apiAuthRequest(opts)
         .then((res) => {
-          let old = _.clone(opts.oauth);
-          _.assign(opts.oauth, res);
+          let old = { ...opts.oauth };
+          Object.assign(opts.oauth, res);
           if (opts.assertion) {
             opts.oauth.assertion = opts.assertion;
           }
@@ -304,8 +300,8 @@ Connection.prototype.refreshToken = function (data) {
   const result = new Promise((resolve, reject) => {
     this._apiAuthRequest(opts)
       .then((res) => {
-        let old = _.clone(opts.oauth);
-        _.assign(opts.oauth, res);
+        let old = { ...opts.oauth };
+        Object.assign(opts.oauth, res);
         if (opts.assertion) {
           opts.oauth.assertion = opts.assertion;
         }
@@ -493,7 +489,7 @@ Connection.prototype.getRecord = function (data) {
   opts.method = 'GET';
 
   if (opts.fields) {
-    if (_.isString(opts.fields)) {
+    if (typeof opts.fields === 'string') {
       opts.fields = [opts.fields];
     }
     opts.resource += '?' + qs.stringify({ fields: opts.fields.join() });
@@ -621,7 +617,7 @@ Connection.prototype._queryHandler = function (data) {
     function handleResponse(respCandidate) {
       let resp = respToJson(respCandidate);
       if (resp.records && resp.records.length > 0) {
-        _.each(resp.records, function (r) {
+        resp.records.forEach(function (r) {
           if (opts.raw) {
             recs.push(r);
           } else {
@@ -856,7 +852,7 @@ Connection.prototype._apiAuthRequest = function (opts) {
 
   // process request opts
   if (opts.requestOpts) {
-    _.merge(opts, opts.requestOpts);
+    Object.assign(opts, opts.requestOpts);
   }
 
   const uri = opts.uri;
@@ -956,7 +952,7 @@ function addSObjectAndId(body, sobject) {
     if (sobject._reset) {
       sobject._reset();
     }
-    if (body && _.isObject(body) && body.id) {
+    if (body && typeof body === 'object' && body.id) {
       sobject._fields.id = body.id;
     }
   }
@@ -975,12 +971,12 @@ function unsucessfullResponseCheck(res, self, opts) {
   const body = util.isJsonResponse(res) ? res.json() : res.txt();
 
   // Salesforce sends internal errors as Array
-  if (_.isArray(body) && body.length > 0) {
+  if (Array.isArray(body) && body.length > 0) {
     e.message = body[0].message;
     e.errorCode = body[0].errorCode;
     e.body = body;
     // error: string body - Something really went wrong
-  } else if (_.isString(body)) {
+  } else if (typeof body === 'string') {
     e.message = body;
     e.errorCode = body;
     e.body = body;
@@ -1024,7 +1020,7 @@ function unsucessfullResponseCheck(res, self, opts) {
 function Plugin(opts) {
   this.namespace = opts.namespace;
   this._fns = {};
-  this.util = _.clone(util);
+  this.util = { ...util };
 }
 
 Plugin.prototype.fn = function (fnName, fn) {
@@ -1050,9 +1046,7 @@ const plugin = function (opts) {
   if (!opts || !opts.namespace) {
     throw new Error('no namespace provided for plugin');
   }
-  opts = _.defaults(opts, {
-    override: false
-  });
+  opts = Object.assign({ override: false }, opts);
   if (plugins[opts.namespace] && opts.override !== true) {
     throw new Error(
       'a plugin with namespace ' + opts.namespace + ' already exists'
