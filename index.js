@@ -968,7 +968,7 @@ function unsucessfullResponseCheck(res, self, opts) {
 
   const e = new Error();
   e.statusCode = res.status;
-  const body = util.isJsonResponse(res) ? res.json() : res.txt();
+  const body = util.isJsonResponse(res) ? res.json() : res.text();
 
   // Salesforce sends internal errors as Array
   if (Array.isArray(body) && body.length > 0) {
