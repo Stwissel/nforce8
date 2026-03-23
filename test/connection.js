@@ -268,4 +268,82 @@ describe('index', function () {
       uri.should.match(/^http:\/\/test\.foo\.com/);
     });
   });
+
+  describe('#_resolveWithRefresh', function () {
+    it('should resolve with oauth when no onRefresh is set', function () {
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback'
+      });
+      let opts = { oauth: { access_token: 'test123' }, executeOnRefresh: true };
+      return org._resolveWithRefresh(opts, {}).then((result) => {
+        result.access_token.should.equal('test123');
+      });
+    });
+
+    it('should call onRefresh callback when set and executeOnRefresh is true', function () {
+      let refreshCalled = false;
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        onRefresh: function (newOauth, oldOauth, cb) {
+          refreshCalled = true;
+          newOauth.access_token.should.equal('new_token');
+          oldOauth.access_token.should.equal('old_token');
+          cb(null);
+        }
+      });
+      let opts = {
+        oauth: { access_token: 'new_token' },
+        executeOnRefresh: true
+      };
+      let oldOauth = { access_token: 'old_token' };
+      return org._resolveWithRefresh(opts, oldOauth).then((result) => {
+        refreshCalled.should.be.true();
+        result.access_token.should.equal('new_token');
+      });
+    });
+
+    it('should reject when onRefresh callback returns an error', function () {
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        onRefresh: function (newOauth, oldOauth, cb) {
+          cb(new Error('refresh failed'));
+        }
+      });
+      let opts = {
+        oauth: { access_token: 'test' },
+        executeOnRefresh: true
+      };
+      return org._resolveWithRefresh(opts, {}).then(
+        () => { throw new Error('should have rejected'); },
+        (err) => { err.message.should.equal('refresh failed'); }
+      );
+    });
+
+    it('should skip onRefresh when executeOnRefresh is false', function () {
+      let refreshCalled = false;
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        onRefresh: function (newOauth, oldOauth, cb) {
+          refreshCalled = true;
+          cb(null);
+        }
+      });
+      let opts = {
+        oauth: { access_token: 'test' },
+        executeOnRefresh: false
+      };
+      return org._resolveWithRefresh(opts, {}).then((result) => {
+        refreshCalled.should.be.false();
+        result.access_token.should.equal('test');
+      });
+    });
+  });
 });

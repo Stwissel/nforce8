@@ -190,6 +190,18 @@ Connection.prototype.getAuthUri = function (opts = {}) {
   return endpoint + '?' + qs.stringify(urlOpts);
 };
 
+Connection.prototype._resolveWithRefresh = function (opts, oldOauth) {
+  if (this.onRefresh && opts.executeOnRefresh === true) {
+    return new Promise((resolve, reject) => {
+      this.onRefresh.call(this, opts.oauth, oldOauth, (err) => {
+        if (err) reject(err);
+        else resolve(opts.oauth);
+      });
+    });
+  }
+  return Promise.resolve(opts.oauth);
+};
+
 Connection.prototype.authenticate = function (data) {
   const self = this;
   const opts = Object.assign({ executeOnRefresh: false, oauth: {} }, this._getOpts(data));
@@ -236,15 +248,7 @@ Connection.prototype.authenticate = function (data) {
     if (opts.assertion) {
       opts.oauth.assertion = opts.assertion;
     }
-    if (self.onRefresh && opts.executeOnRefresh === true) {
-      return new Promise((resolve, reject) => {
-        self.onRefresh.call(self, opts.oauth, old, function (err3) {
-          if (err3) reject(err3);
-          else resolve(opts.oauth);
-        });
-      });
-    }
-    return opts.oauth;
+    return self._resolveWithRefresh(opts, old);
   });
 };
 
@@ -292,15 +296,7 @@ Connection.prototype.refreshToken = function (data) {
     if (opts.assertion) {
       opts.oauth.assertion = opts.assertion;
     }
-    if (self.onRefresh && opts.executeOnRefresh === true) {
-      return new Promise((resolve, reject) => {
-        self.onRefresh.call(self, opts.oauth, old, function (err3) {
-          if (err3) reject(err3);
-          else resolve(opts.oauth);
-        });
-      });
-    }
-    return opts.oauth;
+    return self._resolveWithRefresh(opts, old);
   });
 };
 
@@ -410,11 +406,7 @@ Connection.prototype.insert = function (data) {
   let type = opts.sobject.getType();
   opts.resource = '/sobjects/' + type;
   opts.method = 'POST';
-  if (
-    type === 'document' ||
-    type === 'attachment' ||
-    type === 'contentversion'
-  ) {
+  if (CONST.MULTIPART_TYPES.includes(type)) {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(false));
@@ -428,11 +420,7 @@ Connection.prototype.update = function (data) {
   let id = opts.sobject.getId();
   opts.resource = '/sobjects/' + type + '/' + id;
   opts.method = 'PATCH';
-  if (
-    type === 'document' ||
-    type === 'attachment' ||
-    type === 'contentversion'
-  ) {
+  if (CONST.MULTIPART_TYPES.includes(type)) {
     opts.multipart = multipart(opts);
   } else {
     opts.body = JSON.stringify(opts.sobject._getPayload(true));
@@ -889,7 +877,7 @@ function addSObjectAndId(body, sobject) {
       sobject._reset();
     }
     if (body && typeof body === 'object' && body.id) {
-      sobject._fields.id = body.id;
+      sobject.setId(body.id);
     }
   }
   // Done - finally!

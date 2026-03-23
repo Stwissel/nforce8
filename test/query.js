@@ -116,6 +116,55 @@ describe('query', () => {
     });
   });
 
+  describe('#search', function () {
+    it('should return Record instances when raw is false', (done) => {
+      let searchResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([
+          { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' },
+          { attributes: { type: 'Account' }, Id: '001DEF', Name: 'Test' }
+        ])
+      };
+      api
+        .getGoodServerInstance(searchResponse)
+        .then(() =>
+          orgMulti.search({ search: 'FIND {Acme}', oauth: oauth })
+        )
+        .then((res) => {
+          should.exist(res);
+          res.length.should.equal(2);
+          res[0].should.be.instanceOf(nforce.Record);
+          res[0].get('name').should.equal('Acme');
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
+
+    it('should return raw results when raw is true', (done) => {
+      let searchResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([
+          { attributes: { type: 'Account' }, Id: '001ABC', Name: 'Acme' }
+        ])
+      };
+      api
+        .getGoodServerInstance(searchResponse)
+        .then(() =>
+          orgMulti.search({ search: 'FIND {Acme}', oauth: oauth, raw: true })
+        )
+        .then((res) => {
+          should.exist(res);
+          res.length.should.equal(1);
+          res[0].should.not.be.instanceOf(nforce.Record);
+          res[0].Name.should.equal('Acme');
+        })
+        .catch((err) => should.not.exist(err))
+        .finally(() => done());
+    });
+  });
+
   // reset the lastRequest
   afterEach(() => api.reset());
 
