@@ -1,4 +1,3 @@
-const { resolvePtr } = require('dns');
 const http = require('http');
 const CONST = require('../../lib/constants');
 const apiVersion = CONST.API;
@@ -61,7 +60,7 @@ const getGoodServerInstance = (response = defaultResponse) => {
 };
 
 const getClosedServerInstance = () => {
-  const serverListener = (req, res) => {
+  const serverListener = (req) => {
     const fatError = new Error('ECONNRESET');
     fatError.type = 'system';
     fatError.errno = 'ECONNRESET';

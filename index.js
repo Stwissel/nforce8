@@ -599,8 +599,9 @@ Connection.prototype._queryHandler = function (data) {
 };
 
 /**
- * If it hasn't been discovered on the header
- * try to convert it to object here
+ * If it hasn't been discovered on the header, try to convert it to object here.
+ * @param {string|object} respCandidate - Raw response string or already-parsed object
+ * @returns {object} Parsed JSON object
  */
 const respToJson = (respCandidate) => {
   if (typeof respCandidate === 'object') {

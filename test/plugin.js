@@ -44,7 +44,7 @@ describe('index', function () {
 
     it('should throw when creating a connection with missing plugins', function () {
       (function () {
-        let org = nforce.createConnection({
+        nforce.createConnection({
           clientId: 'SOME_OAUTH_CLIENT_ID',
           clientSecret: 'SOME_OAUTH_CLIENT_SECRET',
           redirectUri: 'http://localhost:3000/oauth/_callback',
@@ -57,20 +57,20 @@ describe('index', function () {
 
     it('should allow an options object with namespace', function () {
       (function () {
-        let plugin = nforce.plugin({ namespace: 'myplugin2' });
+        nforce.plugin({ namespace: 'myplugin2' });
       }.should.not.throw());
     });
 
     it('should not allow overriding existing plugins', function () {
-      let plugin1 = nforce.plugin('myplugin3');
+      nforce.plugin('myplugin3');
 
       (function () {
-        let plugin2 = nforce.plugin('myplugin3');
+        nforce.plugin('myplugin3');
       }.should.throw());
     });
 
     it('should not load plugins not specified', function () {
-      let plugin = nforce.plugin('myplugin4');
+      nforce.plugin('myplugin4');
 
       let org = nforce.createConnection({
         clientId: 'SOME_OAUTH_CLIENT_ID',

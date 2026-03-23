@@ -19,7 +19,7 @@ describe('lib/record', function () {
 
   describe('#constructor', function () {
     it('should allow constructing a new sobject w/ no fields', function () {
-      let acc = new Record({
+      new Record({
         attributes: {
           type: 'Account'
         }
@@ -27,7 +27,7 @@ describe('lib/record', function () {
     });
 
     it('should allow constructing a new sobject w/ fields', function () {
-      let acc = new Record({
+      new Record({
         attributes: {
           type: 'Account'
         },

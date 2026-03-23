@@ -1,6 +1,5 @@
 const nforce = require('../');
 const api = require('./mock/sfdc-rest-api');
-let port = process.env.PORT || 3000;
 const should = require('should');
 
 const org = nforce.createConnection(api.getClient());
