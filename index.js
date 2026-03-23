@@ -886,38 +886,36 @@ Connection.prototype._apiAuthRequest = function (opts) {
 };
 
 Connection.prototype._apiRequest = function (opts) {
-  /**
-   * options:
-   * - sobject
-   * - uri
-   * - oauth
-   * - multipart
-   * - method
-   * - encoding
-   * - body
-   * - qs
-   * - headers
-   */
-
   const self = this;
   const ropts = optionHelper.getApiRequestOptions(opts);
   const uri = optionHelper.getFullUri(ropts);
   const sobject = opts.sobject;
-  const result = new Promise((resolve, reject) => {
-    try {
-      fetch(uri, ropts)
-        .then((res) => responseFailureCheck(res))
-        .then((res) => unsucessfullResponseCheck(res, self, ropts))
-        .then((res) => (util.isJsonResponse(res) ? res.json() : res.text()))
-        .then((body) => addSObjectAndId(body, sobject))
-        .then((body) => resolve(body))
-        .catch((err) => reject(err));
-    } catch (e) {
-      reject(e);
-    }
-  });
 
-  return result;
+  return fetch(uri, ropts)
+    .then((res) => responseFailureCheck(res))
+    .then((res) => unsuccessfulResponseCheck(res))
+    .then((res) => (util.isJsonResponse(res) ? res.json() : res.text()))
+    .then((body) => addSObjectAndId(body, sobject))
+    .catch((err) => {
+      if (
+        err.errorCode &&
+        (err.errorCode === 'INVALID_SESSION_ID' ||
+          err.errorCode === 'Bad_OAuth_Token') &&
+        self.autoRefresh === true &&
+        (opts.oauth.refresh_token ||
+          (self.getUsername() && self.getPassword())) &&
+        !opts._retryCount
+      ) {
+        return Connection.prototype.autoRefreshToken
+          .call(self, opts)
+          .then((res) => {
+            opts._refreshResult = res;
+            opts._retryCount = 1;
+            return Connection.prototype._apiRequest.call(self, opts);
+          });
+      }
+      throw err;
+    });
 };
 
 /*
@@ -960,57 +958,33 @@ function addSObjectAndId(body, sobject) {
   return body;
 }
 
-function unsucessfullResponseCheck(res, self, opts) {
-  // Only interested when stuff went wrong
+function unsuccessfulResponseCheck(res) {
   if (res.ok) {
     return res;
   }
 
-  const e = new Error();
-  e.statusCode = res.status;
-  const body = util.isJsonResponse(res) ? res.json() : res.text();
+  return (util.isJsonResponse(res) ? res.json() : res.text()).then((body) => {
+    const e = new Error();
+    e.statusCode = res.status;
 
-  // Salesforce sends internal errors as Array
-  if (Array.isArray(body) && body.length > 0) {
-    e.message = body[0].message;
-    e.errorCode = body[0].errorCode;
-    e.body = body;
-    // error: string body - Something really went wrong
-  } else if (typeof body === 'string') {
-    e.message = body;
-    e.errorCode = body;
-    e.body = body;
-  } else {
-    // Something went totally wrong
-    e.message = 'Salesforce returned an unrecognized error ' + res.status;
-    e.body = body;
-  }
+    // Salesforce sends internal errors as Array
+    if (Array.isArray(body) && body.length > 0) {
+      e.message = body[0].message;
+      e.errorCode = body[0].errorCode;
+      e.body = body;
+      // error: string body - Something really went wrong
+    } else if (typeof body === 'string') {
+      e.message = body;
+      e.errorCode = body;
+      e.body = body;
+    } else {
+      // Something went totally wrong
+      e.message = 'Salesforce returned an unrecognized error ' + res.status;
+      e.body = body;
+    }
 
-  // confirm auto-refresh support
-  if (
-    e.errorCode &&
-    (e.errorCode === 'INVALID_SESSION_ID' ||
-      e.errorCode === 'Bad_OAuth_Token') &&
-    self.autoRefresh === true &&
-    (opts.oauth.refresh_token || (self.getUsername() && self.getPassword())) &&
-    !opts._retryCount
-  ) {
-    // attempt the autorefresh
-    Connection.prototype.autoRefreshToken
-      .call(self, opts)
-      .then((res) => {
-        opts._refreshResult = res;
-        opts._retryCount = 1;
-        return Connection.prototype._apiRequest.call(self, opts);
-      })
-      .catch((err2) => {
-        throw err2;
-      });
-  } else {
     throw e;
-  }
-
-  return res;
+  });
 }
 
 /*****************************
