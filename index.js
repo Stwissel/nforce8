@@ -92,26 +92,14 @@ Connection.prototype.setSecurityToken = function (token) {
  * helper methods
  *****************************/
 
-Connection.prototype._getOpts = function (d, c, opts = {}) {
+Connection.prototype._getOpts = function (d, opts = {}) {
   let data = {};
-  let callback;
-  let dataTransfer;
 
-  if (util.isFunction(d)) {
-    callback = d;
-    dataTransfer = null;
-  } else {
-    callback = c;
-    dataTransfer = d;
+  if (opts.singleProp && d && !util.isObject(d)) {
+    data[opts.singleProp] = d;
+  } else if (util.isObject(d)) {
+    data = d;
   }
-
-  if (opts.singleProp && dataTransfer && !util.isObject(dataTransfer)) {
-    data[opts.singleProp] = dataTransfer;
-  } else if (util.isObject(dataTransfer)) {
-    data = dataTransfer;
-  }
-
-  data.callback = callback;
 
   if (this.mode === 'single' && !data.oauth) {
     data.oauth = this.oauth;
@@ -253,7 +241,7 @@ Connection.prototype.authenticate = function (data) {
 Connection.prototype.refreshToken = function (data) {
   const self = this;
 
-  const opts = this._getOpts(data, null, {
+  const opts = this._getOpts(data, {
     defaults: {
       executeOnRefresh: true
     }
@@ -299,7 +287,7 @@ Connection.prototype.refreshToken = function (data) {
 };
 
 Connection.prototype.revokeToken = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'token'
   });
 
@@ -316,7 +304,7 @@ Connection.prototype.revokeToken = function (data) {
 };
 
 Connection.prototype.getPasswordStatus = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'id'
   });
 
@@ -372,7 +360,7 @@ Connection.prototype.getSObjects = function (data) {
 };
 
 Connection.prototype.getMetadata = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'type'
   });
   opts.resource = '/sobjects/' + opts.type;
@@ -381,7 +369,7 @@ Connection.prototype.getMetadata = function (data) {
 };
 
 Connection.prototype.getDescribe = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'type'
   });
   opts.resource = '/sobjects/' + opts.type + '/describe';
@@ -390,7 +378,7 @@ Connection.prototype.getDescribe = function (data) {
 };
 
 Connection.prototype.getLimits = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'type'
   });
   opts.resource = '/limits';
@@ -526,7 +514,7 @@ Connection.prototype.getContentVersionData = function (data) {
  *****************************/
 
 Connection.prototype.query = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'query',
     defaults: {
       fetchAll: false,
@@ -538,7 +526,7 @@ Connection.prototype.query = function (data) {
 };
 
 Connection.prototype.queryAll = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'query',
     defaults: {
       fetchAll: false,
@@ -611,7 +599,7 @@ const respToJson = (respCandidate) => {
  *****************************/
 
 Connection.prototype.search = function (data) {
-  const opts = this._getOpts(data, null, {
+  const opts = this._getOpts(data, {
     singleProp: 'search',
     defaults: {
       raw: false
@@ -643,7 +631,7 @@ function requireForwardSlash(uri) {
 }
 
 Connection.prototype.getUrl = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -652,7 +640,7 @@ Connection.prototype.getUrl = function (data) {
 };
 
 Connection.prototype.putUrl = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -664,7 +652,7 @@ Connection.prototype.putUrl = function (data) {
 };
 
 Connection.prototype.postUrl = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -676,7 +664,7 @@ Connection.prototype.postUrl = function (data) {
 };
 
 Connection.prototype.deleteUrl = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'url'
   });
   opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
@@ -689,7 +677,7 @@ Connection.prototype.deleteUrl = function (data) {
  *****************************/
 
 Connection.prototype.apexRest = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'uri'
   });
   const apexPath = opts.uri.startsWith('/') ? opts.uri.substring(1) : opts.uri;
@@ -707,7 +695,7 @@ Connection.prototype.apexRest = function (data) {
 
 Connection.prototype.createStreamClient = function (data) {
   let self = this;
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     defaults: {
       apiVersion: self.apiVersion,
       timeout: null,
@@ -718,7 +706,7 @@ Connection.prototype.createStreamClient = function (data) {
 };
 
 Connection.prototype.subscribe = function (data) {
-  let opts = this._getOpts(data, null, {
+  let opts = this._getOpts(data, {
     singleProp: 'topic',
     defaults: {
       timeout: null,
@@ -741,7 +729,7 @@ Connection.prototype.stream = function (data) {
  *****************************/
 
 Connection.prototype.autoRefreshToken = function (data) {
-  const opts = this._getOpts(data, null, {
+  const opts = this._getOpts(data, {
     defaults: {
       executeOnRefresh: true
     }
