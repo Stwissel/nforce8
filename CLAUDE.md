@@ -47,6 +47,7 @@ There is no build step — this is a plain Node.js module with no transpilation.
 ## CI/CD
 
 - GitHub Actions: `codecheck.yml` runs tests on push to main/master/develop; `publish.yml` publishes to npm on release.
+- **npm publish from CI:** set secret `NPM_TOKEN` (granular write for `nforce8` or classic Automation). `NODE_AUTH_TOKEN` must be set at **job** level so `setup-node` writes `.npmrc` (see `docs/npm-publish-github-actions.md`).
 - Coverage uploaded to Codecov.
 
 ## Linting
