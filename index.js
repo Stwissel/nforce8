@@ -16,8 +16,6 @@ const { plugin, plugins } = require('./lib/plugin');
 
 // TODO turn into ES6 class
 const Connection = function (opts) {
-  let self = this;
-
   opts = Object.assign({}, CONST.defaultOptions, opts || {});
 
   // convert option values
@@ -34,14 +32,14 @@ const Connection = function (opts) {
 
   // load plugins
   if (opts.plugins && Array.isArray(opts.plugins)) {
-    opts.plugins.forEach(function (pname) {
+    opts.plugins.forEach((pname) => {
       if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
       // clone the object
-      self[pname] = { ...plugins[pname]._fns };
+      this[pname] = { ...plugins[pname]._fns };
 
       // now bind to the connection object
-      for (const key of Object.keys(self[pname])) {
-        self[pname][key] = self[pname][key].bind(self);
+      for (const key of Object.keys(this[pname])) {
+        this[pname][key] = this[pname][key].bind(this);
       }
     });
   }
@@ -111,12 +109,10 @@ Connection.prototype._getOpts = function (d, opts = {}) {
  *****************************/
 
 Connection.prototype.getAuthUri = function (opts = {}) {
-  const self = this;
-
   let urlOpts = {
     response_type: opts.responseType || 'code',
-    client_id: self.clientId,
-    redirect_uri: self.redirectUri
+    client_id: this.clientId,
+    redirect_uri: this.redirectUri
   };
 
   if (opts.display) {
@@ -163,7 +159,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
 
   if (opts.authEndpoint) {
     endpoint = opts.authEndpoint;
-  } else if (self.environment === 'sandbox') {
+  } else if (this.environment === 'sandbox') {
     endpoint = this.testAuthEndpoint;
   } else {
     endpoint = this.authEndpoint;
@@ -185,24 +181,23 @@ Connection.prototype._resolveWithRefresh = function (opts, oldOauth) {
 };
 
 Connection.prototype.authenticate = function (data) {
-  const self = this;
   const opts = Object.assign({ executeOnRefresh: false, oauth: {} }, this._getOpts(data));
 
-  opts.uri = self.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
+  opts.uri = this.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
   opts.method = 'POST';
   opts.headers = {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
 
   const bopts = {
-    client_id: self.clientId,
-    client_secret: self.clientSecret
+    client_id: this.clientId,
+    client_secret: this.clientSecret
   };
 
   if (opts.code) {
     bopts.grant_type = 'authorization_code';
     bopts.code = opts.code;
-    bopts.redirect_uri = self.redirectUri;
+    bopts.redirect_uri = this.redirectUri;
   } else if (opts.assertion) {
     bopts.grant_type = 'assertion';
     bopts.assertion_type = 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';
@@ -229,12 +224,11 @@ Connection.prototype.authenticate = function (data) {
     if (opts.assertion) {
       opts.oauth.assertion = opts.assertion;
     }
-    return self._resolveWithRefresh(opts, old);
+    return this._resolveWithRefresh(opts, old);
   });
 };
 
 Connection.prototype.refreshToken = function (data) {
-  const self = this;
 
   const opts = this._getOpts(data, {
     defaults: {
@@ -277,7 +271,7 @@ Connection.prototype.refreshToken = function (data) {
     if (opts.assertion) {
       opts.oauth.assertion = opts.assertion;
     }
-    return self._resolveWithRefresh(opts, old);
+    return this._resolveWithRefresh(opts, old);
   });
 };
 
@@ -533,7 +527,6 @@ Connection.prototype.queryAll = function (data) {
 };
 
 Connection.prototype._queryHandler = function (data) {
-  const self = this;
   const recs = [];
   const opts = this._getOpts(data);
 
@@ -548,10 +541,10 @@ Connection.prototype._queryHandler = function (data) {
     q: opts.query
   };
 
-  function handleResponse(respCandidate) {
+  const handleResponse = (respCandidate) => {
     let resp = respToJson(respCandidate);
     if (resp.records && resp.records.length > 0) {
-      resp.records.forEach(function (r) {
+      resp.records.forEach((r) => {
         if (opts.raw) {
           recs.push(r);
         } else {
@@ -562,13 +555,13 @@ Connection.prototype._queryHandler = function (data) {
       });
     }
     if (opts.fetchAll && resp.nextRecordsUrl) {
-      return self
-        .getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth })
-        .then((res2) => handleResponse(res2));
+      return this.getUrl({ url: resp.nextRecordsUrl, oauth: opts.oauth }).then(
+        (res2) => handleResponse(res2)
+      );
     }
     resp.records = recs;
     return resp;
-  }
+  };
 
   return this._apiRequest(opts).then((resp) => handleResponse(resp));
 };
@@ -689,10 +682,9 @@ Connection.prototype.apexRest = function (data) {
  *****************************/
 
 Connection.prototype.createStreamClient = function (data) {
-  let self = this;
   let opts = this._getOpts(data, {
     defaults: {
-      apiVersion: self.apiVersion,
+      apiVersion: this.apiVersion,
       timeout: null,
       retry: null
     }
@@ -758,7 +750,6 @@ Connection.prototype._apiAuthRequest = function (opts) {
         : timeoutSignal;
   }
 
-  const self = this;
   const uri = opts.uri;
 
   return fetch(uri, opts)
@@ -777,15 +768,14 @@ Connection.prototype._apiAuthRequest = function (opts) {
       });
     })
     .then((jBody) => {
-      if (jBody.access_token && self.mode === 'single') {
-        self.oauth = jBody;
+      if (jBody.access_token && this.mode === 'single') {
+        this.oauth = jBody;
       }
       return jBody;
     });
 };
 
 Connection.prototype._apiRequest = function (opts) {
-  const self = this;
   const ropts = optionHelper.getApiRequestOptions(opts);
 
   if (this.timeout) {
@@ -820,17 +810,17 @@ Connection.prototype._apiRequest = function (opts) {
         err.errorCode &&
         (err.errorCode === 'INVALID_SESSION_ID' ||
           err.errorCode === 'Bad_OAuth_Token') &&
-        self.autoRefresh === true &&
+        this.autoRefresh === true &&
         (opts.oauth.refresh_token ||
-          (self.getUsername() && self.getPassword())) &&
+          (this.getUsername() && this.getPassword())) &&
         !opts._retryCount
       ) {
         return Connection.prototype.autoRefreshToken
-          .call(self, opts)
+          .call(this, opts)
           .then((res) => {
             opts._refreshResult = res;
             opts._retryCount = 1;
-            return Connection.prototype._apiRequest.call(self, opts);
+            return Connection.prototype._apiRequest.call(this, opts);
           });
       }
       throw err;
