@@ -454,21 +454,22 @@ Connection.prototype.getRecord = function (data) {
  * blob/binary methods
  *****************************/
 
+const BODY_GETTER_MAP = {
+  document: 'getDocumentBody',
+  attachment: 'getAttachmentBody',
+  contentversion: 'getContentVersionData'
+};
+
 Connection.prototype.getBody = function (data) {
   const opts = this._getOpts(data);
   const type = (
     opts.sobject ? opts.sobject.getType() : opts.type
   ).toLowerCase();
-
-  if (type === 'document') {
-    return this.getDocumentBody(opts);
-  } else if (type === 'attachment') {
-    return this.getAttachmentBody(opts);
-  } else if (type === 'contentversion') {
-    return this.getContentVersionData(opts);
-  } else {
-    return Promise.reject(new Error('invalid type: ' + type));
+  const getter = BODY_GETTER_MAP[type];
+  if (getter) {
+    return this[getter](opts);
   }
+  return Promise.reject(new Error('invalid type: ' + type));
 };
 
 Connection.prototype.getAttachmentBody = function (data) {
