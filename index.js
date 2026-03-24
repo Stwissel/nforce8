@@ -801,6 +801,15 @@ Connection.prototype._apiAuthRequest = function (opts) {
 Connection.prototype._apiRequest = function (opts) {
   const self = this;
   const ropts = optionHelper.getApiRequestOptions(opts);
+
+  if (this.timeout) {
+    const timeoutSignal = AbortSignal.timeout(this.timeout);
+    ropts.signal =
+      ropts.signal !== undefined
+        ? AbortSignal.any([timeoutSignal, ropts.signal])
+        : timeoutSignal;
+  }
+
   const uri = optionHelper.getFullUri(ropts);
   const sobject = opts.sobject;
 
