@@ -398,7 +398,7 @@ Connection.prototype.insert = function (data) {
   if (CONST.MULTIPART_TYPES.includes(type)) {
     opts.multipart = multipart(opts);
   } else {
-    opts.body = JSON.stringify(opts.sobject._getPayload(false));
+    opts.body = JSON.stringify(opts.sobject._getFullPayload());
   }
   return this._apiRequest(opts);
 };
@@ -412,7 +412,7 @@ Connection.prototype.update = function (data) {
   if (CONST.MULTIPART_TYPES.includes(type)) {
     opts.multipart = multipart(opts);
   } else {
-    opts.body = JSON.stringify(opts.sobject._getPayload(true));
+    opts.body = JSON.stringify(opts.sobject._getChangedPayload());
   }
   return this._apiRequest(opts);
 };
@@ -424,7 +424,7 @@ Connection.prototype.upsert = function (data) {
   let extId = opts.sobject.getExternalId();
   opts.resource = '/sobjects/' + type + '/' + extIdField + '/' + extId;
   opts.method = 'PATCH';
-  opts.body = JSON.stringify(opts.sobject._getPayload(false));
+  opts.body = JSON.stringify(opts.sobject._getFullPayload());
   return this._apiRequest(opts);
 };
 
