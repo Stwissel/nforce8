@@ -346,9 +346,13 @@ Connection.prototype.getIdentity = function (data) {
  * system api methods
  *****************************/
 
-Connection.prototype.getVersions = function () {
-  let opts = this._getOpts(null);
-  opts.uri = 'http://na1.salesforce.com/services/data/';
+Connection.prototype.getVersions = function (data) {
+  const opts = this._getOpts(data);
+  if (opts.oauth && opts.oauth.instance_url) {
+    opts.uri = opts.oauth.instance_url + '/services/data/';
+  } else {
+    opts.uri = this.loginUri.replace('/oauth2/token', '') + '/services/data/';
+  }
   opts.method = 'GET';
   return this._apiAuthRequest(opts);
 };

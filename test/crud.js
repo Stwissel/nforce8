@@ -172,6 +172,26 @@ describe('api-mock-crud', () => {
     });
   });
 
+  describe('#getVersions', () => {
+    it('should use instance_url from oauth instead of hardcoded na1', (done) => {
+      let versionsResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ version: '45.0', url: '/services/data/v45.0' }])
+      };
+      api
+        .getGoodServerInstance(versionsResponse)
+        .then(() => org.getVersions({ oauth: oauth }))
+        .then((res) => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal('/services/data/');
+          api.getLastRequest().method.should.equal('GET');
+        })
+        .then(() => done())
+        .catch((err) => done(err));
+    });
+  });
+
   describe('#apexRest', () => {
     it('should create a proper request for a custom Apex REST endpoint', (done) => {
       org
