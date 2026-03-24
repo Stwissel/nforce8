@@ -1,6 +1,5 @@
 'use strict';
 
-const qs = require('querystring');
 const Record = require('./lib/record');
 const FDCStream = require('./lib/fdcstream');
 const util = require('./lib/util');
@@ -187,7 +186,7 @@ Connection.prototype.getAuthUri = function (opts = {}) {
     endpoint = this.authEndpoint;
   }
 
-  return endpoint + '?' + qs.stringify(urlOpts);
+  return endpoint + '?' + new URLSearchParams(urlOpts).toString();
 };
 
 Connection.prototype._resolveWithRefresh = function (opts, oldOauth) {
@@ -239,7 +238,7 @@ Connection.prototype.authenticate = function (data) {
     }
   }
 
-  opts.body = qs.stringify(bopts);
+  opts.body = new URLSearchParams(bopts).toString();
 
   return this._apiAuthRequest(opts).then((res) => {
     let old = { ...opts.oauth };
@@ -284,7 +283,7 @@ Connection.prototype.refreshToken = function (data) {
     refreshOpts.client_secret = this.clientSecret;
   }
 
-  opts.body = qs.stringify(refreshOpts);
+  opts.body = new URLSearchParams(refreshOpts).toString();
   opts.headers = {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
@@ -458,7 +457,7 @@ Connection.prototype.getRecord = function (data) {
     if (typeof opts.fields === 'string') {
       opts.fields = [opts.fields];
     }
-    opts.resource += '?' + qs.stringify({ fields: opts.fields.join() });
+    opts.resource += '?' + new URLSearchParams({ fields: opts.fields.join() }).toString();
   }
 
   return this._apiRequest(opts).then((resp) => {

@@ -228,7 +228,7 @@ describe('index', function () {
         environment: 'production'
       });
       let uri = org.getAuthUri({ scope: ['visualforce', 'web'] });
-      uri.should.match(/.*scope=visualforce%20web.*/);
+      uri.should.match(/.*scope=visualforce(\+|%20)web.*/);
     });
 
     it('should allow for setting state', function () {
