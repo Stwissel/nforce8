@@ -261,6 +261,29 @@ describe('lib/record', function () {
       should.exist(acc.previous['name']);
       acc.previous('name').should.equal('Test Account');
     });
+
+    it('should return falsy previous value 0', function () {
+      let acc = new Record({ Name: 'Test', Score: 5 });
+      acc._reset();
+      acc.set('Score', 10);
+      acc.previous('Score').should.equal(5);
+      acc.set('Score', 0);
+      // Previous should still be 5 (first value before any change)
+    });
+
+    it('should return falsy previous value empty string', function () {
+      let acc = new Record({ Name: 'Test', Label: 'original' });
+      acc._reset();
+      acc.set('Label', '');
+      acc.previous('Label').should.equal('original');
+    });
+
+    it('should return falsy previous value null', function () {
+      let acc = new Record({ Name: 'Test', Ref: 'something' });
+      acc._reset();
+      acc.set('Ref', null);
+      acc.previous('Ref').should.equal('something');
+    });
   });
 
   describe('#toJSON', function () {
