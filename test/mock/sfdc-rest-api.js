@@ -50,11 +50,19 @@ const getServerInstance = (serverListener) => {
 
 const getGoodServerInstance = (response = defaultResponse) => {
   const serverListener = (req, res) => {
-    requestStack.push(req);
-    res.writeHead(response.code, response.headers);
-    if (response.body) {
-      res.end(response.body, 'utf8');
-    }
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      req.body = Buffer.concat(chunks).toString();
+      requestStack.push(req);
+      const headers = Object.assign({ Connection: 'close' }, response.headers);
+      res.writeHead(response.code, headers);
+      if (response.body) {
+        res.end(response.body, 'utf8');
+      } else {
+        res.end();
+      }
+    });
   };
   return getServerInstance(serverListener);
 };

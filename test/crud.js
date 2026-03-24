@@ -144,6 +144,34 @@ describe('api-mock-crud', () => {
     });
   });
 
+  describe('#insert multipart', () => {
+    it('should send multipart/form-data content-type with boundary for Document insert', (done) => {
+      let insertResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: '015DEADBEEF', success: true })
+      };
+      let obj = nforce.createSObject('Document', {
+        Name: 'TestDoc',
+        FolderId: '005DEADBEEF'
+      });
+      obj.setAttachment('test.txt', Buffer.from('hello world'));
+      api
+        .getGoodServerInstance(insertResponse)
+        .then(() => org.insert({ sobject: obj, oauth: oauth }))
+        .then((res) => {
+          should.exist(res);
+          res.id.should.equal('015DEADBEEF');
+          let ct = api.getLastRequest().headers['content-type'];
+          ct.should.startWith('multipart/form-data');
+          ct.should.containEql('boundary');
+          api.getLastRequest().method.should.equal('POST');
+        })
+        .then(() => done())
+        .catch((err) => done(err));
+    });
+  });
+
   describe('#apexRest', () => {
     it('should create a proper request for a custom Apex REST endpoint', (done) => {
       org
