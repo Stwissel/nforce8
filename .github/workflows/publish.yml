@@ -3,22 +3,20 @@ on:
   workflow_dispatch: 
   release:
     types: [created]
+
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
-    # NODE_AUTH_TOKEN must be set for the whole job so actions/setup-node can
-    # write ~/.npmrc; if it is only on `npm publish`, auth is missing → E404.
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: "22.x"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - run: npm install
       - run: npm test
-      - name: Verify npm authentication
-        run: npm whoami
-      - name: Publish to npm
-        run: npm publish --access public
+      - run: npm publish --provenance --access public
