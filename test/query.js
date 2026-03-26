@@ -30,7 +30,7 @@ describe('query', () => {
   before((done) => api.start(port, done));
 
   describe('#query', function () {
-    let expected = `/services/data/'${apiVersion}/query?q=SELECT+Id+FROM+Account+LIMIT+1`;
+    let expected = `/services/data/${apiVersion}/query?q=SELECT+Id+FROM+Account+LIMIT+1`;
 
     it('should work in multi-user mode with promises', (done) => {
       orgMulti
