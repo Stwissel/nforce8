@@ -312,6 +312,65 @@ describe('index', function () {
     });
   });
 
+  describe('#getIdentity', function () {
+    it('should reject when oauth is missing', function () {
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        environment: 'production',
+        mode: 'multi'
+      });
+      return org.getIdentity({}).then(
+        () => {
+          throw new Error('expected rejection');
+        },
+        (err) => {
+          err.message.should.match(/access_token/);
+        }
+      );
+    });
+
+    it('should reject when oauth has access_token but no identity URL', function () {
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        environment: 'production',
+        mode: 'multi'
+      });
+      return org
+        .getIdentity({ oauth: { access_token: 'tok' } })
+        .then(
+          () => {
+            throw new Error('expected rejection');
+          },
+          (err) => {
+            err.message.should.match(/oauth\.id|oauthId/);
+          }
+        );
+    });
+  });
+
+  describe('#refreshToken', function () {
+    it('should reject when oauth has no refresh_token or assertion', function () {
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        environment: 'production'
+      });
+      return org.refreshToken({ oauth: {} }).then(
+        () => {
+          throw new Error('expected rejection');
+        },
+        (err) => {
+          err.message.should.match(/refresh_token|assertion/);
+        }
+      );
+    });
+  });
+
   describe('#_resolveWithRefresh', function () {
     it('should resolve with oauth when no onRefresh is set', function () {
       let org = nforce.createConnection({

@@ -78,7 +78,7 @@ const getClosedServerInstance = () => {
 };
 
 // return an example client
-const getClient = function (opts) {
+const getClient = (opts) => {
   opts = opts || {};
   return {
     clientId: 'ADFJSD234ADF765SFG55FD54S',
@@ -93,7 +93,7 @@ const getClient = function (opts) {
 };
 
 // return an example oauth
-const getOAuth = function () {
+const getOAuth = () => {
   return {
     id:
       'http://localhost:' + port + '/id/00Dd0000000fOlWEAU/005d00000014XTPAA2',

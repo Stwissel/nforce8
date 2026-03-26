@@ -5,7 +5,11 @@ const globals = require('globals');
 
 const baseRules = {
   ...js.configs.recommended.rules,
-  quotes: ['error', 'single'],
+  quotes: [
+    'error',
+    'single',
+    { avoidEscape: true, allowTemplateLiterals: true }
+  ],
   'no-multi-spaces': [
     'error',
     {

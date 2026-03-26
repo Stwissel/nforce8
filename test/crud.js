@@ -36,6 +36,10 @@ describe('api-mock-crud', () => {
         .catch((err) => done(err));
     });
 
+    it('should throw when sobject is missing', () => {
+      (() => org.insert({ oauth: oauth })).should.throw(/requires opts\.sobject/);
+    });
+
     it('should create a proper request on insert', (done) => {
       let obj = nforce.createSObject('Account', {
         Name: 'Test Account',

@@ -55,7 +55,7 @@ Object.assign(Connection.prototype, httpMethods, authMethods, apiMethods);
 
 const createConnection = (opts) => new Connection(opts);
 
-const createSObject = function (type, fields) {
+const createSObject = (type, fields) => {
   const data = fields || {};
   data.attributes = {
     type: type,
