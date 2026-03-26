@@ -21,8 +21,8 @@ let client = undefined;
     });
 
     after(() => {
-      if (client != undefined) {
-        client.logout();
+      if (client != null && client.oauth && client.oauth.access_token) {
+        return client.revokeToken({ token: client.oauth.access_token });
       }
     });
 
