@@ -1,89 +1,100 @@
 {
   "grade": "B",
-  "total_issues": 18,
+  "total_issues": 28,
   "severity_distribution": {
-    "high": 3,
-    "medium": 8,
-    "low": 7
+    "high": 4,
+    "medium": 12,
+    "low": 12
   },
   "category_distribution": {
-    "Bloaters": 2,
-    "Change Preventers": 1,
-    "Couplers": 1,
-    "Functional Abusers": 2,
-    "Dispensables": 4,
-    "Lexical Abusers": 4,
-    "Object-Oriented Abusers": 1,
+    "Lexical Abusers": 7,
+    "Dispensables": 7,
+    "Object-Oriented Abusers": 4,
     "Obfuscators": 3,
-    "Other": 2
+    "Data Dealers": 2,
+    "Bloaters": 1,
+    "Functional Abusers": 1,
+    "Couplers": 1
   },
   "solid_compliance": {
-    "SRP": 4,
-    "OCP": 7,
-    "LSP": 10,
-    "ISP": 8,
-    "DIP": 7
+    "SRP": 7,
+    "OCP": 6,
+    "LSP": 8,
+    "ISP": 7,
+    "DIP": 5
   },
   "top_issues": [
     {
-      "file": "index.js + lib/multipart.js + lib/optionhelper.js",
-      "issue": "Broken multipart upload: lib/multipart.js produces a request-library array instead of FormData; optionhelper.js never assigns opts.multipart to ropts.body; Document/Attachment/ContentVersion inserts send empty-body requests silently",
+      "file": "index.js, lib/api.js, lib/auth.js, lib/http.js, lib/multipart.js, lib/plugin.js",
+      "issue": "182 active ESLint errors — all source files from the recent refactoring use double-quoted strings, violating the project's single-quote rule. CI-blocking.",
       "severity": "high",
-      "category": "Functional Abusers"
+      "category": "Lexical Abusers"
     },
     {
-      "file": "index.js",
-      "issue": "God Object / Divergent Change: 994-line file handles 7 unrelated concerns (constructor, auth getters/setters, OAuth flows, CRUD/query/search/streaming API methods, HTTP infrastructure, HTTP helper functions, Plugin system)",
+      "file": "lib/connection.js",
+      "issue": "Dead Connection ES6 class that is never imported or used. The runtime Connection is still a constructor function in index.js. Refactoring artifact causing confusion.",
       "severity": "high",
-      "category": "Bloaters"
-    },
-    {
-      "file": "index.js + lib/connection.js",
-      "issue": "Parallel Connection definitions: prototype-based constructor in index.js (line 24) and ES6 class stub in lib/connection.js (line 5) are out of sync; only validateConnectionOptions is imported from lib/connection.js; TODO comment acknowledges incomplete migration",
-      "severity": "high",
-      "category": "Object-Oriented Abusers"
-    },
-    {
-      "file": "lib/optionhelper.js + index.js",
-      "issue": "Timeout silently ignored for all API requests: AbortSignal.timeout() is applied only in _apiAuthRequest; _apiRequest has no timeout enforcement; optionhelper.js sets ropts.timeout which fetch ignores",
-      "severity": "medium",
-      "category": "Obfuscators"
-    },
-    {
-      "file": "lib/optionhelper.js",
-      "issue": "Feature Envy: getApiRequestOptions reads 13 distinct fields from the caller's opts object (uri, resource, oauth, method, gzip, multipart, headers, body, qs, requestOpts, timeout, apiVersion, blob)",
-      "severity": "medium",
-      "category": "Couplers"
-    },
-    {
-      "file": "index.js",
-      "issue": "Deprecated querystring module: require('querystring') used at lines 3, 190, 242, 287; superseded by URLSearchParams in Node.js 22",
-      "severity": "medium",
       "category": "Dispensables"
     },
     {
-      "file": "index.js",
-      "issue": "Magic string hardcoded URL in getVersions (line 352): http://na1.salesforce.com/services/data/ uses HTTP not HTTPS, hardcodes a legacy pod, and bypasses all configurable endpoint logic",
+      "file": "lib/plugin.js",
+      "issue": "Module-level singleton plugin registry (const plugins = Object.create(null)). Tests are not isolated; state leaks between test runs and between tenants in serverless environments.",
+      "severity": "high",
+      "category": "Data Dealers"
+    },
+    {
+      "file": "lib/auth.js, lib/api.js, lib/http.js, lib/fdcstream.js, lib/optionhelper.js",
+      "issue": "OAuth object is a plain untyped object throughout the codebase. No validation at call sites. Missing fields produce obscure TypeError crashes at runtime.",
+      "severity": "high",
+      "category": "Data Dealers"
+    },
+    {
+      "file": "lib/auth.js",
+      "issue": "revokeToken hardcodes Salesforce OAuth revoke endpoint URLs instead of using the configurable loginUri/testLoginUri connection options. Breaks enterprise custom-domain deployments.",
       "severity": "medium",
       "category": "Lexical Abusers"
     },
     {
-      "file": "lib/optionhelper.js + lib/constants.js + lib/connection.js",
-      "issue": "Non-functional gzip option: sets Accept-Encoding header but native fetch does not decompress responses; gzip:true will cause JSON parse failures if server honours the header",
+      "file": "lib/optionhelper.js",
+      "issue": "OptionHelper is an unnecessary constructor-factory wrapper around two pure functions. No state, no defaults. Callers must invoke require('./optionhelper')() which is surprising.",
       "severity": "medium",
       "category": "Dispensables"
     },
     {
-      "file": "lib/record.js",
-      "issue": "_changed Array uses O(n) Array.includes() for membership testing on every set() call; should be a Set for O(1) has() and automatic deduplication",
+      "file": "lib/api.js",
+      "issue": "getUrl/putUrl/postUrl/deleteUrl repeat the same opts.oauth.instance_url + requireForwardSlash(opts.url) URL construction pattern four times. Body serialization also duplicated.",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "_queryHandler is included in module.exports despite being a private implementation method. Unnecessarily expands the public API surface.",
+      "severity": "medium",
+      "category": "Object-Oriented Abusers"
+    },
+    {
+      "file": "lib/util.js",
+      "issue": "isObject(null) returns true because typeof null === 'object' in JavaScript. Latent correctness bug for any caller passing null.",
       "severity": "medium",
       "category": "Functional Abusers"
     },
     {
-      "file": "lib/record.js",
-      "issue": "previous() method uses truthiness check (if this._previous[field]) which returns undefined for falsy previous values (0, empty string, false) instead of the actual stored value",
+      "file": "lib/fdcstream.js",
+      "issue": "let self = this anti-pattern used in two ES6 class constructors. Arrow functions are the modern idiomatic replacement for Node.js 22 targets.",
+      "severity": "medium",
+      "category": "Object-Oriented Abusers"
+    },
+    {
+      "file": "test/query.js",
+      "issue": "Template literal at line 33 contains a stray single-quote character, making the expected URL value incorrect. The url assertion silently never fires due to promise error handler swallowing it.",
       "severity": "low",
-      "category": "Obfuscators"
+      "category": "Dispensables"
+    },
+    {
+      "file": "test/integration.js",
+      "issue": "Teardown calls client.logout() which does not exist on Connection. Would throw TypeError if the integration test ever ran with real credentials.",
+      "severity": "low",
+      "category": "Lexical Abusers"
     }
   ]
 }

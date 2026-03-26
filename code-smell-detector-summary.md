@@ -1,93 +1,78 @@
-# Code Quality Summary — nforce8
+# Code Quality Summary: nforce8
 
 ## Critical Issues
-
-**3 High-severity issues found — Immediate attention required for one broken feature**
+**4 High-severity issues found — includes 1 CI-blocking issue requiring immediate attention**
 
 ### Top 3 Problems
-
-1. **Broken Multipart Upload (H3)** — Document, Attachment, and ContentVersion inserts/updates send malformed HTTP requests. The multipart payload builder produces an array in the format of the now-removed `request` library; native `fetch` requires a `FormData` object. The body is never attached to the request. **Priority: High**
-
-2. **God Object / Divergent Change (H1)** — `index.js` at 994 lines handles 7 unrelated concerns: configuration, authentication, CRUD, query, streaming, HTTP infrastructure, and the plugin system. Every change to any part of the library requires navigating this file. **Priority: High**
-
-3. **Split Connection Definition (H2)** — Two `Connection` definitions coexist: a complete prototype-based one in `index.js` and an ES6 class stub in `lib/connection.js`. They are out of sync. A `// TODO turn into ES6 class` comment documents the acknowledged but incomplete migration. **Priority: Medium**
+1. **182 Active Lint Errors** — All string quotes in 6 recently refactored files violate the project's own ESLint rule. CI will fail on every lint check. — **Priority: Immediate**
+2. **Dead `Connection` Class** — A complete ES6 `Connection` class sits unused in `lib/connection.js` while `index.js` uses a separate constructor function. This is a confusing refactoring artifact. — **Priority: High**
+3. **Untyped OAuth Object** — The OAuth token (`{ access_token, instance_url, ... }`) flows through the entire codebase as a plain object with no validation at call sites. Missing or malformed tokens produce obscure crashes. — **Priority: High**
 
 ---
 
 ## Overall Assessment
-
-- **Project Size**: 9 source files, 1,627 lines, JavaScript (Node.js 22+)
+- **Project Size**: 13 source files, ~1,100 lines of production code, 1 primary language (JavaScript)
 - **Code Quality Grade**: B
-- **Total Issues**: 18 — High: 3 | Medium: 8 | Low: 7
-- **Overall Complexity**: Medium — one broken feature, one large file, remaining issues are well-scoped
+- **Total Issues**: High: 4 | Medium: 12 | Low: 12
+- **Overall Complexity**: Low-Medium (the recent architectural refactoring successfully reduced complexity; remaining issues are contained and addressable)
 
 ---
 
 ## Business Impact
-
-- **Technical Debt**: Medium — the `index.js` size and split Connection definition slow down feature work and onboarding
-- **Maintenance Risk**: Medium — the broken multipart feature and non-functional timeout on API requests (M2) are silent failures with no error thrown
-- **Development Velocity Impact**: Medium — the 994-line `index.js` creates friction for every change; decomposing it would materially speed up development
-- **Recommended Priority**: High for H3 (broken feature) and M2 (broken timeout), Medium for everything else
+- **Technical Debt**: Medium — focused in specific areas, not systemic
+- **Maintenance Risk**: Low-Medium — the codebase is readable and well-organized; risks are concentrated in the OAuth handling and the CI lint failure
+- **Development Velocity Impact**: Low — the library is largely feature-complete; new feature additions are not blocked, but developers writing new code may copy the double-quote style and worsen the lint situation
+- **Recommended Priority**: Immediate (for H1 and L11 — fixes take minutes); High (for remaining issues)
 
 ---
 
 ## Quick Wins
+These issues take under 30 minutes total to fix and have outsized impact:
 
-These are low-risk changes with immediate benefit:
-
-- **Replace deprecated `querystring` module (M4)**: Replace 3 `qs.stringify()` calls with `new URLSearchParams(obj).toString()`. No behavior change, eliminates use of a legacy Node.js API. **Priority: Low**
-- **Remove unused `url` require (L6)**: `const url = require('url')` is unnecessary in Node 22 where `URL` is global. One-line deletion. **Priority: Low**
-- **Fix `previous()` falsy bug (L4)**: `record.previous('field')` incorrectly returns `undefined` when the previous value was `0`, `''`, or `false`. Fix with an `in` operator check instead of a truthiness check. **Priority: Medium**
-- **Replace `_changed` Array with Set (M8)**: Improves correctness and performance of the Record model. Simplifies four methods. **Priority: Medium**
-- **Fix timeout for API requests (M2)**: Apply `AbortSignal.timeout()` to `_apiRequest` — currently only auth requests respect the configured timeout; all CRUD/query/search requests silently ignore it. **Priority: High**
+- **Fix lint errors (H1)**: Run `npx eslint . --fix` — 182 errors disappear in one automated command. Unblocks CI. **Priority: Immediate**
+- **Fix test URL bug (L11)**: Remove one stray `'` character from `test/query.js` line 33. Activates a previously broken test assertion. **Priority: Immediate**
+- **Fix `revokeToken` hardcoded URLs (M4)**: Replace two hardcoded Salesforce domain strings with configurable connection options. Fixes a real bug for enterprise users with custom domains. **Priority: High**
+- **Fix `isObject(null)` (M8)**: Add `candidate !== null &&` to one line in `lib/util.js`. Eliminates a latent JavaScript footgun. **Priority: High**
+- **Replace `let self = this` (M9)**: Convert two old-style closures in `fdcstream.js` to arrow functions. Modernizes the idiom with no behavior change. **Priority: Medium**
 
 ---
 
 ## Major Refactoring Needed
-
-- **`index.js` Decomposition (H1 + H2)**: **Priority: Medium** — Split the 994-line file into focused modules (`lib/auth.js`, `lib/http.js`, `lib/plugin.js`) and complete the ES6 class migration in `lib/connection.js`. This is the highest-leverage long-term improvement: it makes individual concerns independently testable, reduces merge conflicts, and makes the codebase navigable for new contributors.
-
-- **Multipart Upload Rewrite (H3)**: **Priority: High** — Rewrite `lib/multipart.js` to produce a `FormData` object instead of a request-library array, and wire it into the fetch call body. Without this, Document, Attachment, and ContentVersion operations silently send empty-body requests.
-
-- **`gzip` Option (M7)**: **Priority: Low** — The `gzip: true` connection option sets the `Accept-Encoding` header but does not decompress responses. It appears to work but will break JSON parsing if a server honours the header. Either implement `DecompressionStream` handling or remove the option.
+- **Dead `Connection` class in `lib/connection.js`** — **Priority: High** — Resolve the architectural ambiguity between the constructor function in `index.js` and the unused ES6 class. This decision unlocks proper encapsulation (private fields) for the whole library.
+- **Untyped OAuth object (H4)** — **Priority: High** — Creating an `OAuth` value type would prevent a category of runtime crash and make the library significantly more robust for callers. This is the most impactful single structural improvement available.
+- **Plugin registry as global singleton (H3)** — **Priority: Medium** — The module-level plugin store causes test isolation issues and limits use in serverless/multi-tenant environments. Refactoring to an injectable registry is a larger effort but enables proper testing.
 
 ---
 
 ## Recommended Action Plan
 
-### Phase 1 — Immediate (Fix Broken Behavior)
-- Rewrite multipart upload to use `FormData` (H3) — affects Document/Attachment/ContentVersion operations
-- Apply `AbortSignal.timeout()` to `_apiRequest` to make timeout work for all requests, not just auth (M2)
-- Fix `previous()` falsy value bug in Record (L4)
+### Phase 1 (Immediate — minutes of work)
+- Run `npx eslint . --fix` to resolve all 182 quote-style errors
+- Fix the stray `'` in `test/query.js` line 33
+- Add a pre-commit lint hook to prevent recurrence
 
-### Phase 2 — Short-term (Low-Risk Improvements)
-- Replace deprecated `querystring` module with `URLSearchParams` (M4)
-- Remove unnecessary `url` require (L6)
-- Replace `_changed` Array with `Set` in Record (M8)
-- Address or remove the non-functional `gzip` option (M7)
-- Remove dead callback parameter scaffolding from `_getOpts` (L3)
+### Phase 2 (Short-term — 1-2 days)
+- Add revoke URI constants and fix `revokeToken` in `lib/auth.js`
+- Fix `isObject` null exclusion in `lib/util.js`
+- Replace `let self = this` with arrow functions in `lib/fdcstream.js`
+- Fix the integration test teardown (`client.logout()` does not exist)
+- Remove empty test bodies and dead commented-out code
+- Remove unused `singleProp: 'type'` from `getLimits`
 
-### Phase 3 — Medium-term (Architecture)
-- Complete ES6 class migration and decompose `index.js` into focused modules (H1 + H2)
-- Clean up `self = this` aliases — convert callbacks to arrow functions in `record.js` (M3)
-- Add `'use strict'` to the 5 files that lack it, or migrate to ESM (L7)
-
-### Phase 4 — Long-term (Polish)
-- Convert `lib/record.js` from prototype syntax to ES6 class (L1)
-- Replace `_getPayload(bool)` flag argument with two named methods (M6)
-- Replace `getBody()` if/else chain with a dispatch map (OCP)
-- Remove or implement the `_extensionEnabled` replay detection stub (L5)
+### Phase 3 (Long-term — architectural decisions)
+- Consolidate the `Connection` definition (ES6 class vs. constructor function)
+- Create an `OAuth` value type to replace the untyped plain object
+- Make the plugin registry injectable rather than a global singleton
 
 ---
 
 ## Key Takeaways
-
-- The recent refactoring sprint removed substantial debt. The remaining issues are well-contained and most have clear, low-risk fixes.
-- The most urgent issue is the broken multipart upload — it silently sends malformed requests without throwing an error, making it hard to diagnose.
-- The second most urgent issue is that the configured `timeout` has no effect on any request except authentication. Users who set `timeout` on their connection will not be protected from hung CRUD or query requests.
-- The 994-line `index.js` is the dominant maintainability risk. The infrastructure for decomposition already exists (`lib/connection.js` has the class stub), and completing the migration would be the most impactful single investment.
+- The recent architectural split of the monolithic `index.js` into `auth/api/http` was successful and significantly improved the codebase. The remaining issues are residual from that migration (quote style, dead class) or pre-existing structural choices (OAuth typing, plugin singleton).
+- The most dangerous issue for end users is H4 (untyped OAuth) — passing a malformed OAuth object produces runtime crashes with no clear error message. A single `validateOAuth()` call in `_getOpts()` would provide an immediate partial mitigation.
+- The codebase has zero security vulnerabilities detected, clean error factories, good test coverage of core flows, and a thoughtful plugin system. The foundation is strong.
 
 ---
 
-*Detailed technical analysis with exact file and line references available in `code-smell-detector-report.md`*
+*Detailed technical analysis (28 issues with file/line references and refactoring guidance) is available in `code-smell-detector-report.md`.*
+
+*Analysis performed: 2026-03-26.*

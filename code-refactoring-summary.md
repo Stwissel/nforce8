@@ -1,141 +1,135 @@
-# Code Refactoring Summary — nforce8
+# Code Refactoring Summary: nforce8
 
-**Generated**: 2026-03-23
-**Based on**: code-smell-detector-report.md (18 issues) and code-refactoring-report.md (20 recommendations)
-**Codebase state**: 91 tests passing, Node 22+, 2 runtime dependencies
+**Date**: 2026-03-26
+**Source**: code-smell-detector-report.md (28 issues) → code-refactoring-report.md (18 recommendations)
+**Codebase**: 96 tests passing, Node.js >= 22, 2 runtime dependencies (faye, mime-types)
 
 ---
 
 ## Overview
 
-The codebase has one broken feature, one correctness bug, one silent misconfiguration, and a collection of mechanical and architectural improvements. 20 recommendations are organized across four phases.
+The nforce8 codebase is in good health following a recent architectural split. The 18 refactoring recommendations in this summary address the remaining issues in four priority tiers. All recommendations are low risk and none break the public API. Expected outcomes: 182 ESLint errors eliminated, 1 null bug fixed, 1 silent test assertion bug exposed, ~47 lines of production code removed, and the codebase brought into full consistency with its own conventions.
 
 ---
 
 ## Priority Matrix
 
-| ID | Recommendation | Impact | Complexity | Risk |
-|----|---------------|--------|------------|------|
-| **R01** | Rewrite multipart upload to use FormData | H | M | M |
-| **R02** | Apply AbortSignal.timeout to _apiRequest | H | L | L |
-| **R03** | Fix previous() falsy value bug | H | L | L |
-| **R04** | Replace deprecated querystring with URLSearchParams | M | L | L |
-| **R05** | Remove unnecessary url module import | L | L | L |
-| **R06** | Replace _changed Array with Set | M | L | L |
-| **R07** | Simplify hasChanged control flow | L | L | L |
-| **R08** | Fix getVersions magic HTTP URL | M | L | L |
-| **R09** | Remove dead callback scaffolding from _getOpts | M | L | L |
-| **R10** | Add 'use strict' to five files | L | L | L |
-| **R11** | Remove unnecessary self = this aliases | L | M | L |
-| **R12** | Split _getPayload into _getFullPayload / _getChangedPayload | M | L | L |
-| **R13** | Replace getBody if/else chain with dispatch map | L | L | L |
-| **R14** | Fix _extensionEnabled dead assignment in fdcstream.js | L | L | L |
-| **R15** | Implement or remove the gzip option | M | M | M |
-| **R17** | Complete ES6 class migration into lib/connection.js | H | H | H |
-| **R18** | Extract lib/plugin.js | M | L | L |
-| **R19** | Split index.js by responsibility domain | H | H | M |
+### High Impact
 
-Impact, Complexity, Risk: H = High, M = Medium, L = Low
+| ID  | Recommendation                          | Impact | Complexity | Risk | Smell IDs |
+|-----|-----------------------------------------|--------|------------|------|-----------|
+| R01 | Fix 182 quote-style lint errors         | H      | L          | L    | H1, L1    |
+| R02 | Remove dead `Connection` class          | H      | L          | L    | H2, M1    |
+| R03 | Fix `isObject(null)` null bug           | H      | L          | L    | M8        |
+| R04 | Fix stray quote in query test URL       | H      | L          | L    | L11       |
 
----
+### Medium Impact
 
-## Recommended Implementation Sequence
+| ID  | Recommendation                               | Impact | Complexity | Risk | Smell IDs |
+|-----|----------------------------------------------|--------|------------|------|-----------|
+| R05 | Remove `OptionHelper` constructor wrapper    | M      | L          | L    | M3        |
+| R06 | Extract `getHeader` utility                  | M      | L          | L    | M11       |
+| R07 | Consolidate URL methods via `_urlRequest`    | M      | M          | L    | M5        |
+| R08 | Remove `_queryHandler` from public exports   | M      | L          | L    | M6        |
+| R09 | Replace hardcoded OAuth revoke URLs          | M      | L          | L    | M4, L6    |
+| R10 | Replace `let self = this` with arrow fns     | M      | L          | L    | M9        |
+| R11 | Replace `arguments.length` in `Record.set`  | M      | L          | L    | M10       |
 
-### Phase 1 — Fix Broken or Incorrect Behavior (do first)
+### Low Impact (Readability / Maintenance)
 
-| Order | ID | What | Why First |
-|-------|----|------|-----------|
-| 1 | R01 | Rewrite multipart to FormData | Multipart upload sends no body — feature is broken |
-| 2 | R02 | Add AbortSignal.timeout to _apiRequest | All non-auth API calls are unbounded; timeout config silently ignored |
-| 3 | R03 | Fix previous() falsy value bug | Returns undefined for 0, '', false, null — correctness bug |
-
-### Phase 2 — Mechanical Quick Wins (any order, single session)
-
-| Order | ID | What | Effort |
-|-------|----|------|--------|
-| 4 | R04 | Replace querystring with URLSearchParams | 20 min |
-| 5 | R05 | Remove url module import | 5 min |
-| 6 | R06 | Replace _changed Array with Set | 30 min |
-| 7 | R07 | Simplify hasChanged control flow | 5 min |
-| 8 | R08 | Fix getVersions magic HTTP URL | 10 min |
-| 9 | R09 | Remove dead callback from _getOpts | 20 min |
-| 10 | R10 | Add 'use strict' to five files | 5 min |
-
-### Phase 3 — Design and Consistency
-
-| Order | ID | What | Effort |
-|-------|----|------|--------|
-| 11 | R11 | Remove self = this where arrow functions suffice | 1-2 h |
-| 12 | R12 | Split _getPayload into two named methods | 30 min |
-| 13 | R13 | Replace getBody if/else with dispatch map | 15 min |
-| 14 | R14 | Fix _extensionEnabled dead assignment | 10 min |
-| 15 | R15 | Implement or remove gzip option | 1-2 h |
-
-### Phase 4 — Architectural Decomposition (feature branch, code review)
-
-| Order | ID | What | Effort | Depends on |
-|-------|----|------|--------|-----------|
-| 16 | R18 | Extract lib/plugin.js | 1 h | — |
-| 17 | R17 | Complete ES6 class migration | 3-5 h | R11 (self cleanup), R09 (_getOpts cleanup) |
-| 18 | R19 | Split index.js by responsibility | 4-6 h | R17 |
+| ID  | Recommendation                               | Impact | Complexity | Risk | Smell IDs |
+|-----|----------------------------------------------|--------|------------|------|-----------|
+| R12 | Move `respToJson` above its call site        | L      | L          | L    | M12       |
+| R13 | Remove unused `singleProp` from `getLimits`  | L      | L          | L    | L9        |
+| R14 | Deprecate `stream` alias method              | L      | L          | L    | M7        |
+| R15 | Remove empty test hooks and stub bodies      | L      | L          | L    | L3, L4    |
+| R16 | Fix `client.logout()` non-existent call      | L      | L          | L    | L5        |
+| R17 | Remove stale `'v54.0'` fallback constant     | L      | L          | L    | L6        |
+| R18 | Consolidate `getIdentity` null-guard chain   | L      | L          | L    | L8        |
 
 ---
 
-## Quick Reference — Refactoring Techniques Applied
+## Quick Reference: Refactoring Techniques Used
 
-| Technique | IDs |
-|-----------|-----|
-| Substitute Algorithm | R01, R02, R04, R11, R15 |
-| Replace Data Value with Object | R06 |
-| Replace Parameter with Explicit Methods | R12 |
-| Remove Parameter | R09 |
-| Replace Nested Conditional with Guard Clauses | R03, R07 |
-| Replace Conditional with Polymorphism (dispatch map) | R13 |
-| Replace Magic Number with Symbolic Constant | R08 |
-| Inline Method | R05 |
-| Move Method / Move Field | R14, R18 |
-| Extract Class | R18, R19 |
-| Pull Up Method / Pull Up Constructor Body | R17 |
-| Introduce Assertion (strict mode) | R10 |
-
----
-
-## Key Issues Being Fixed
-
-### Broken Feature
-**R01 — Multipart Upload** (`lib/multipart.js`, `lib/optionhelper.js`)
-Document, Attachment, and ContentVersion insert/update calls send a request with a `Content-Type: multipart/form-data` header and no body. The fix rewrites `multipart.js` to return a `FormData` instance and updates `optionhelper.js` to assign it to `ropts.body`.
-
-### Silent Misconfiguration
-**R02 — Timeout** (`index.js`, `lib/optionhelper.js`)
-Authentication calls respect the configured `timeout` via `AbortSignal.timeout`. All other API calls (CRUD, query, search, etc.) do not — `ropts.timeout` is set but `fetch` ignores it. Fix: apply the identical `AbortSignal.timeout` block from `_apiAuthRequest` to `_apiRequest`.
-
-### Correctness Bug
-**R03 — previous() Falsy Values** (`lib/record.js`)
-`Record.prototype.previous('field')` returns `undefined` when the previous value was `0`, `''`, `false`, or `null`. Fix: change truthiness check `if (this._previous[field])` to presence check `if (field in this._previous)`.
-
-### Deprecated Module
-**R04 — querystring** (`index.js`)
-The `querystring` module is deprecated in Node.js. Four call sites can be directly replaced with `new URLSearchParams(obj).toString()`.
-
-### Performance and Data Structure
-**R06 — _changed Array** (`lib/record.js`)
-`_changed` is maintained as an `Array` but used exclusively for membership testing. `Array.includes()` is O(n); `Set.has()` is O(1). Converting to `Set` also removes the need for the `includes()` guard in `set()` since `Set.add()` is idempotent.
-
-### Architectural
-**R17 — ES6 Class Migration** (`index.js`, `lib/connection.js`)
-`index.js` has a `// TODO turn into ES6 class` comment on line 23 and contains a `Connection` function constructor with 46 prototype methods. `lib/connection.js` has an ES6 `class Connection` stub that is never used as a class. Completing the migration eliminates the duplicate definition and makes individual concerns independently testable.
+| Technique                              | Applied In      |
+|----------------------------------------|-----------------|
+| Substitute Algorithm                   | R01, R10, R11   |
+| Inline Class                           | R02, R05        |
+| Remove Dead Code                       | R02, R15        |
+| Introduce Assertion                    | R03             |
+| Extract Method                         | R06, R07, R12   |
+| Parameterize Method                    | R07             |
+| Hide Method                            | R08             |
+| Replace Magic Number w/ Symbolic Const | R09, R17        |
+| Remove Parameter                       | R13             |
+| Inline Method (deprecation)            | R14             |
+| Rename Method                          | R16             |
+| Consolidate Conditional Expression     | R18             |
 
 ---
 
-## Expected Benefits by Phase
+## Implementation Sequence
 
-| Phase | Primary Benefits |
-|-------|-----------------|
-| Phase 1 | Multipart upload works; timeout enforced on all requests; previous() returns correct values |
-| Phase 2 | No deprecated modules; codebase consistent with Node 22+ idioms; dead code removed |
-| Phase 3 | Clearer method names; consistent patterns; no misleading dead state; gzip option honest |
-| Phase 4 | Single canonical Connection class; plugin system independently maintainable; index.js is a thin composition root; each concern independently testable |
+Apply in this order to minimize risk. Each phase can be a single commit or PR.
+
+### Phase 1 — CI Fix (apply immediately, zero semantic risk)
+
+```
+R01  npx eslint . --fix  →  npm run lint passes  →  182 errors → 0
+R04  Remove stray ' from test/query.js  →  silent false-pass becomes real assertion
+R03  Fix isObject null bug + add unit test  →  isObject(null) returns false
+```
+
+### Phase 2 — Dead Code Removal
+
+```
+R02  Remove unused Connection class from lib/connection.js
+R17  Remove 'v54.0' literal from lib/constants.js
+R15  Remove empty beforeEach; implement/skip stub tests
+R16  Fix client.logout() → client.revokeToken()
+R13  Remove singleProp: 'type' from getLimits
+R12  Move respToJson definition above _queryHandler
+```
+
+### Phase 3 — Structural Improvements
+
+```
+R05  Inline OptionHelper: direct exports, remove require()()
+R06  Add getHeader utility; 12 lines → 2 lines in responseFailureCheck
+R08  Remove _queryHandler from module.exports; use .call() internally
+R09  Add revokeUri constants; use this.revokeUri in revokeToken
+R07  Extract _urlRequest; 4 duplicate methods → 4 one-liners
+R10  Replace let self = this with arrow functions in fdcstream.js
+R11  Replace arguments.length dispatch in Record.set
+```
+
+### Phase 4 — Documentation
+
+```
+R18  Consolidate getIdentity null-guard chain
+R14  Add @deprecated JSDoc to stream(); update README
+```
+
+---
+
+## Key Benefits Expected
+
+### Immediate (Phase 1)
+- CI lint gate passes: 182 errors eliminated
+- A silent test bug is exposed and fixed: `url.should.equal(expected)` in `test/query.js` will now actually verify URL construction
+- Null-safety improved: `isObject(null)` returns `false` as intended
+
+### Short-Term (Phases 2–3)
+- **Reduced surface area**: `_queryHandler` removed from the public `Connection` prototype
+- **Simpler module API**: `require('./optionhelper')` replaces the confusing `require('./optionhelper')()`
+- **Maintainability**: Fixing one `_urlRequest` function fixes URL construction for all four HTTP verb methods
+- **DRY headers**: One `getHeader()` call replaces 6-line ternary repeated twice in `responseFailureCheck`
+- **Configurable revoke endpoint**: `revokeToken` works for private Salesforce instances with custom OAuth domains
+- **Modern JavaScript**: No more `let self = this` or `arguments` object in ES6 class bodies
+
+### Long-Term (Phase 4 + Future)
+- `stream` deprecation sets up a clean public API for the next major version
+- `isObject` null safety prevents a class of future runtime crashes
 
 ---
 
@@ -143,13 +137,29 @@ The `querystring` module is deprecated in Node.js. Four call sites can be direct
 
 | File | Recommendations |
 |------|----------------|
-| `index.js` | R02, R04, R08, R09, R11, R13, R17, R18, R19 |
-| `lib/record.js` | R03, R06, R07, R11, R12 |
-| `lib/multipart.js` | R01, R10 |
-| `lib/optionhelper.js` | R01, R02, R05 |
-| `lib/connection.js` | R15 (gzip validation), R17 |
-| `lib/constants.js` | R15 (gzip default) |
-| `lib/fdcstream.js` | R10, R14 |
-| `lib/util.js` | R10 |
-| `lib/errors.js` | R10 |
-| `lib/plugin.js` (new) | R18 |
+| `lib/util.js` | R03 (isObject fix), R06 (getHeader) |
+| `lib/api.js` | R07 (URL methods), R08 (_queryHandler), R12 (reorder), R13 (getLimits), R14 (stream), R18 (getIdentity) |
+| `lib/auth.js` | R09 (revokeToken URLs) |
+| `lib/http.js` | R05 (optionhelper import), R06 (getHeader usage) |
+| `lib/connection.js` | R02 (remove dead Connection class) |
+| `lib/constants.js` | R09 (add revokeUri), R17 (remove v54.0) |
+| `lib/optionhelper.js` | R05 (remove constructor wrapper) |
+| `lib/fdcstream.js` | R10 (arrow functions) |
+| `lib/record.js` | R11 (arguments.length) |
+| `index.js` | R01 (quote style) |
+| `test/query.js` | R04 (stray quote) |
+| `test/record.js` | R15 (empty hooks/tests) |
+| `test/plugin.js` | R15 (empty test) |
+| `test/integration.js` | R16 (logout → revokeToken) |
+
+---
+
+## What Was Not Recommended (Deferred to Future Major Version)
+
+Two issues from the smell report are architecturally significant but outside the scope of incremental refactoring:
+
+**H3 — Global Plugin Registry** (`lib/plugin.js`)
+The `plugins` singleton is a module-level mutable object. Fixing this requires introducing a `PluginRegistry` class and threading an optional registry instance through `createConnection`. This is a public API change requiring a semver major bump.
+
+**H4 — OAuth as Untyped Plain Object**
+The OAuth token flows through all modules as an unvalidated `{}`. Creating an `OAuth` value class with constructor validation would eliminate obscure `TypeError: Cannot read property 'instance_url' of undefined` crashes, but requires coordinated changes across five files (`lib/auth.js`, `lib/api.js`, `lib/http.js`, `lib/fdcstream.js`, `lib/optionhelper.js`). Recommended as a dedicated future PR after test coverage is strengthened.
