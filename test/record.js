@@ -13,10 +13,6 @@ let accData = {
 };
 
 describe('lib/record', function () {
-  beforeEach(function (done) {
-    done();
-  });
-
   describe('#constructor', function () {
     it('should allow constructing a new sobject w/ no fields', function () {
       new Record({
@@ -59,7 +55,12 @@ describe('lib/record', function () {
       Object.keys(acc._previous).length.should.equal(0);
     });
 
-    it('should allow me to set properties', function () {});
+    it('should allow me to set properties', function () {
+      const rec = new Record({ attributes: { type: 'Account' } });
+      rec.set({ Name: 'Acme', Industry: 'Tech' });
+      rec.get('name').should.equal('Acme');
+      rec.get('industry').should.equal('Tech');
+    });
   });
 
   describe('#get', function () {

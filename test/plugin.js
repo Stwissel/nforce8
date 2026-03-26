@@ -32,7 +32,12 @@ describe('index', function () {
       result.should.equal('bar');
     });
 
-    it('should not allow non-functions when calling fn', function () {});
+    it('should not allow non-functions when calling fn', function () {
+      const p = nforce.plugin({ namespace: 'test-nonfn-' + Date.now() });
+      (function () {
+        p.fn('myFn', 'not-a-function');
+      }).should.throw('invalid function provided');
+    });
 
     it('should have util methods', function () {
       let plugin = nforce.plugin('utilplugin');
