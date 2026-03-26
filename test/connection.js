@@ -64,6 +64,49 @@ describe('index', function () {
       }.should.not.throw());
     });
 
+    it('should not accept bare major-only apiVersion v45', function () {
+      (function () {
+        nforce.createConnection({
+          clientId: 'ADFJSD234ADF765SFG55FD54S',
+          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+          redirectUri: 'http://localhost:3000/oauth/_callback',
+          apiVersion: 'v45'
+        });
+      }.should.throw());
+    });
+
+    it('should reject whitespace-only clientId', function () {
+      (function () {
+        nforce.createConnection({
+          clientId: '   ',
+          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+          redirectUri: 'http://localhost:3000/oauth/_callback'
+        });
+      }.should.throw('invalid or missing clientId'));
+    });
+
+    it('should reject non-http(s) redirectUri', function () {
+      (function () {
+        nforce.createConnection({
+          clientId: 'ADFJSD234ADF765SFG55FD54S',
+          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+          redirectUri: 'ftp://localhost:3000/oauth/_callback'
+        });
+      }.should.throw('invalid or missing redirectUri'));
+    });
+
+    it('should normalize environment and mode to lowercase after validation', function () {
+      let org = nforce.createConnection({
+        clientId: 'ADFJSD234ADF765SFG55FD54S',
+        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        environment: 'SandBox',
+        mode: 'SINGLE'
+      });
+      org.environment.should.equal('sandbox');
+      org.mode.should.equal('single');
+    });
+
     it('should accept production for environment', function () {
       (function () {
         nforce.createConnection({

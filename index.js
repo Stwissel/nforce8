@@ -1,13 +1,13 @@
-'use strict';
+"use strict";
 
-const Record = require('./lib/record');
-const util = require('./lib/util');
-const CONST = require('./lib/constants');
-const { validateConnectionOptions } = require('./lib/connection');
-const { plugin, plugins } = require('./lib/plugin');
-const httpMethods = require('./lib/http');
-const authMethods = require('./lib/auth');
-const apiMethods = require('./lib/api');
+const Record = require("./lib/record");
+const util = require("./lib/util");
+const CONST = require("./lib/constants");
+const { validateConnectionOptions } = require("./lib/connection");
+const { plugin, plugins } = require("./lib/plugin");
+const httpMethods = require("./lib/http");
+const authMethods = require("./lib/auth");
+const apiMethods = require("./lib/api");
 
 /*****************************
  * connection object
@@ -16,14 +16,12 @@ const apiMethods = require('./lib/api');
 const Connection = function (opts) {
   opts = Object.assign({}, CONST.defaultOptions, opts || {});
 
-  // convert option values
-  opts.environment = opts.environment.toLowerCase();
-  opts.mode = opts.mode.toLowerCase();
-
   Object.assign(this, opts);
 
-  // validate options
   validateConnectionOptions(this);
+
+  this.environment = this.environment.toLowerCase();
+  this.mode = this.mode.toLowerCase();
 
   // parse timeout into integer in case it's a floating point.
   this.timeout = parseInt(this.timeout, 10);
@@ -31,7 +29,15 @@ const Connection = function (opts) {
   // load plugins
   if (opts.plugins && Array.isArray(opts.plugins)) {
     opts.plugins.forEach((pname) => {
-      if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
+      // Prevent prototype pollution via malicious plugin names
+      if (
+        pname === "__proto__" ||
+        pname === "constructor" ||
+        pname === "prototype"
+      ) {
+        throw new Error("invalid plugin name: " + pname);
+      }
+      if (!plugins[pname]) throw new Error("plugin " + pname + " not found");
       this[pname] = { ...plugins[pname]._fns };
       for (const key of Object.keys(this[pname])) {
         this[pname][key] = this[pname][key].bind(this);
@@ -52,14 +58,14 @@ const createConnection = (opts) => new Connection(opts);
 const createSObject = function (type, fields) {
   const data = fields || {};
   data.attributes = {
-    type: type
+    type: type,
   };
   const rec = new Record(data);
   return rec;
 };
 
-const version = require('./package.json').version;
-const API_VERSION = require('./package.json').sfdx.api;
+const version = require("./package.json").version;
+const API_VERSION = require("./package.json").sfdx.api;
 module.exports = {
   util: util,
   plugin: plugin,
@@ -67,5 +73,5 @@ module.exports = {
   version: version,
   API_VERSION: API_VERSION,
   createConnection: createConnection,
-  createSObject: createSObject
+  createSObject: createSObject,
 };

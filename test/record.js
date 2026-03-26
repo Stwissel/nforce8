@@ -115,6 +115,29 @@ describe('lib/record', function () {
       acc.get('Name').should.equal('Foo');
       acc._previous['name'].should.equal('Test Account');
     });
+
+    it('should not treat unchanged falsy values as modifications', function () {
+      let acc = new Record({
+        attributes: { type: 'Account' },
+        Flag__c: false,
+        Score__c: 0
+      });
+      acc._reset();
+      acc.set('Flag__c', false);
+      acc.set('Score__c', 0);
+      acc.hasChanged().should.equal(false);
+    });
+
+    it('should keep first previous value when it was falsy', function () {
+      let acc = new Record({
+        attributes: { type: 'Account' },
+        Score__c: 0
+      });
+      acc._reset();
+      acc.set('Score__c', 1);
+      acc.set('Score__c', 2);
+      acc.previous('score__c').should.equal(0);
+    });
   });
 
   describe('#getType', function () {
@@ -268,7 +291,7 @@ describe('lib/record', function () {
       acc.set('Score', 10);
       acc.previous('Score').should.equal(5);
       acc.set('Score', 0);
-      // Previous should still be 5 (first value before any change)
+      acc.previous('Score').should.equal(5);
     });
 
     it('should return falsy previous value empty string', function () {

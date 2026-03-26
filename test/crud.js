@@ -144,7 +144,20 @@ describe('api-mock-crud', () => {
     });
   });
 
-  describe('#insert multipart', () => {
+  describe('#multipart', () => {
+    it('should omit binary part when attachment body is missing (metadata-only)', () => {
+      const multipart = require('../lib/multipart');
+      const obj = nforce.createSObject('Document', {
+        Name: 'MetaOnly',
+        FolderId: '005DEADBEEF'
+      });
+      obj.setId('015DEADBEEF');
+      const form = multipart({ sobject: obj, method: 'PATCH' });
+      const entries = Array.from(form.entries());
+      entries.length.should.equal(1);
+      entries[0][0].should.startWith('entity_');
+    });
+
     it('should send multipart/form-data content-type with boundary for Document insert', (done) => {
       let insertResponse = {
         code: 200,
