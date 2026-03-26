@@ -1,7 +1,7 @@
 {
   "name": "nforce8",
   "description": "Forked from nforce by Kevin O'Hara <kevnohara80@gmail.com> (http://kevinmohara.com) for use in NodeRED",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "author": "Stephan H. Wissel <stephan@wissel.net> (https://wissel.net)",
   "contributors": [
     {
@@ -30,7 +30,7 @@
     "api"
   ],
   "sfdx": {
-    "api": "v45.0"
+    "api": "v63.0"
   },
   "repository": {
     "type": "git",
