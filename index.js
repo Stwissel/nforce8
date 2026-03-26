@@ -1,13 +1,13 @@
-"use strict";
+'use strict';
 
-const Record = require("./lib/record");
-const util = require("./lib/util");
-const CONST = require("./lib/constants");
-const { validateConnectionOptions } = require("./lib/connection");
-const { plugin, plugins } = require("./lib/plugin");
-const httpMethods = require("./lib/http");
-const authMethods = require("./lib/auth");
-const apiMethods = require("./lib/api");
+const Record = require('./lib/record');
+const util = require('./lib/util');
+const CONST = require('./lib/constants');
+const { validateConnectionOptions } = require('./lib/connection');
+const { plugin, plugins } = require('./lib/plugin');
+const httpMethods = require('./lib/http');
+const authMethods = require('./lib/auth');
+const apiMethods = require('./lib/api');
 
 /*****************************
  * connection object
@@ -31,13 +31,13 @@ const Connection = function (opts) {
     opts.plugins.forEach((pname) => {
       // Prevent prototype pollution via malicious plugin names
       if (
-        pname === "__proto__" ||
-        pname === "constructor" ||
-        pname === "prototype"
+        pname === '__proto__' ||
+        pname === 'constructor' ||
+        pname === 'prototype'
       ) {
-        throw new Error("invalid plugin name: " + pname);
+        throw new Error('invalid plugin name: ' + pname);
       }
-      if (!plugins[pname]) throw new Error("plugin " + pname + " not found");
+      if (!plugins[pname]) throw new Error('plugin ' + pname + ' not found');
       this[pname] = { ...plugins[pname]._fns };
       for (const key of Object.keys(this[pname])) {
         this[pname][key] = this[pname][key].bind(this);
@@ -64,8 +64,8 @@ const createSObject = (type, fields) => {
   return rec;
 };
 
-const version = require("./package.json").version;
-const API_VERSION = require("./package.json").sfdx.api;
+const version = require('./package.json').version;
+const API_VERSION = require('./package.json').sfdx.api;
 module.exports = {
   util: util,
   plugin: plugin,
