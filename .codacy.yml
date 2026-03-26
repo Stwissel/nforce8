@@ -1,4 +1,12 @@
 ---
+# For ESLint: turn on “Use configuration file” for ESLint 9 on the repo Code patterns
+# page so analysis uses eslint.config.js (single quotes). .eslintrc.cjs aligns ESLint 8.
+engines:
+  eslint-9:
+    exclude_paths:
+      - "examples/**"
+      - "coverage/**"
+      - "node_modules/**"
 duplication:
   enabled: true
   exclude_paths:

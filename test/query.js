@@ -138,6 +138,7 @@ describe('query', () => {
           should.exist(res);
           res.searchRecords.length.should.equal(2);
           res.searchRecords[0].should.be.instanceOf(nforce.Record);
+          res.searchRecords[0].hasChanged().should.equal(false);
           res.searchRecords[0].get('name').should.equal('Acme');
           res.totalSize.should.equal(2);
         })

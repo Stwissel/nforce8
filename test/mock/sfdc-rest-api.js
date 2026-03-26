@@ -50,11 +50,19 @@ const getServerInstance = (serverListener) => {
 
 const getGoodServerInstance = (response = defaultResponse) => {
   const serverListener = (req, res) => {
-    requestStack.push(req);
-    res.writeHead(response.code, response.headers);
-    if (response.body) {
-      res.end(response.body, 'utf8');
-    }
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      req.body = Buffer.concat(chunks).toString();
+      requestStack.push(req);
+      const headers = Object.assign({ Connection: 'close' }, response.headers);
+      res.writeHead(response.code, headers);
+      if (response.body) {
+        res.end(response.body, 'utf8');
+      } else {
+        res.end();
+      }
+    });
   };
   return getServerInstance(serverListener);
 };
@@ -70,7 +78,7 @@ const getClosedServerInstance = () => {
 };
 
 // return an example client
-const getClient = function (opts) {
+const getClient = (opts) => {
   opts = opts || {};
   return {
     clientId: 'ADFJSD234ADF765SFG55FD54S',
@@ -85,7 +93,7 @@ const getClient = function (opts) {
 };
 
 // return an example oauth
-const getOAuth = function () {
+const getOAuth = () => {
   return {
     id:
       'http://localhost:' + port + '/id/00Dd0000000fOlWEAU/005d00000014XTPAA2',

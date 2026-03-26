@@ -50,7 +50,7 @@ describe('lib/record', function () {
     it('should set fields as changed on constructor', function () {
       let acc = new Record(accData);
       should.exist(acc._changed);
-      acc._changed.length.should.equal(2);
+      acc._changed.size.should.equal(2);
     });
 
     it('should set an empty hash for previous on constructor', function () {
@@ -105,8 +105,8 @@ describe('lib/record', function () {
       });
       acc.set('Industry', 'Technology');
       acc.get('industry').should.equal('Technology');
-      acc._changed.indexOf('industry').should.not.equal(-1);
-      acc._changed.length.should.equal(1);
+      acc._changed.has('industry').should.equal(true);
+      acc._changed.size.should.equal(1);
     });
 
     it('should update the previous hash', function () {
@@ -114,6 +114,29 @@ describe('lib/record', function () {
       acc.set({ Name: 'Foo' });
       acc.get('Name').should.equal('Foo');
       acc._previous['name'].should.equal('Test Account');
+    });
+
+    it('should not treat unchanged falsy values as modifications', function () {
+      let acc = new Record({
+        attributes: { type: 'Account' },
+        Flag__c: false,
+        Score__c: 0
+      });
+      acc._reset();
+      acc.set('Flag__c', false);
+      acc.set('Score__c', 0);
+      acc.hasChanged().should.equal(false);
+    });
+
+    it('should keep first previous value when it was falsy', function () {
+      let acc = new Record({
+        attributes: { type: 'Account' },
+        Score__c: 0
+      });
+      acc._reset();
+      acc.set('Score__c', 1);
+      acc.set('Score__c', 2);
+      acc.previous('score__c').should.equal(0);
     });
   });
 
@@ -190,7 +213,7 @@ describe('lib/record', function () {
   describe('#hasChanged', function () {
     it('should return false with no argument and no changes', function () {
       let acc = new Record(accData);
-      acc._changed = [];
+      acc._changed = new Set();
       acc._previous = {};
       acc.hasChanged().should.equal(false);
     });
@@ -217,7 +240,7 @@ describe('lib/record', function () {
   describe('#changed', function () {
     it('should return an empty hash with no changes', function () {
       let acc = new Record(accData);
-      acc._changed = [];
+      acc._changed = new Set();
       acc._previous = {};
       Object.keys(acc.changed()).length.should.equal(0);
     });
@@ -261,6 +284,29 @@ describe('lib/record', function () {
       should.exist(acc.previous['name']);
       acc.previous('name').should.equal('Test Account');
     });
+
+    it('should return falsy previous value 0', function () {
+      let acc = new Record({ Name: 'Test', Score: 5 });
+      acc._reset();
+      acc.set('Score', 10);
+      acc.previous('Score').should.equal(5);
+      acc.set('Score', 0);
+      acc.previous('Score').should.equal(5);
+    });
+
+    it('should return falsy previous value empty string', function () {
+      let acc = new Record({ Name: 'Test', Label: 'original' });
+      acc._reset();
+      acc.set('Label', '');
+      acc.previous('Label').should.equal('original');
+    });
+
+    it('should return falsy previous value null', function () {
+      let acc = new Record({ Name: 'Test', Ref: 'something' });
+      acc._reset();
+      acc.set('Ref', null);
+      acc.previous('Ref').should.equal('something');
+    });
   });
 
   describe('#toJSON', function () {
@@ -282,14 +328,14 @@ describe('lib/record', function () {
   describe('#_getPayload', function () {
     it('should return all fields when changedOnly is false', function () {
       let acc = new Record(accData);
-      acc._changed = [];
+      acc._changed = new Set();
       acc._previous = {};
       Object.keys(acc._getPayload(false)).length.should.equal(2);
     });
 
     it('should return changed fields only when changedOnly is true', function () {
       let acc = new Record(accData);
-      acc._changed = [];
+      acc._changed = new Set();
       acc._previous = {};
       acc.set('MyField__c', 'test');
       Object.keys(acc._getPayload(true)).length.should.equal(1);
@@ -297,7 +343,7 @@ describe('lib/record', function () {
 
     it('should return all fields only when changedOnly is not specified', function () {
       let acc = new Record(accData);
-      acc._changed = [];
+      acc._changed = new Set();
       acc._previous = {};
       acc.set('MyField__c', 'test');
       Object.keys(acc._getPayload()).length.should.equal(3);

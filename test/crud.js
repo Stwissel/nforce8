@@ -36,6 +36,10 @@ describe('api-mock-crud', () => {
         .catch((err) => done(err));
     });
 
+    it('should throw when sobject is missing', () => {
+      (() => org.insert({ oauth: oauth })).should.throw(/requires opts\.sobject/);
+    });
+
     it('should create a proper request on insert', (done) => {
       let obj = nforce.createSObject('Account', {
         Name: 'Test Account',
@@ -141,6 +145,67 @@ describe('api-mock-crud', () => {
         })
         .catch((err) => should.not.exist(err))
         .finally(() => done());
+    });
+  });
+
+  describe('#multipart', () => {
+    it('should omit binary part when attachment body is missing (metadata-only)', () => {
+      const multipart = require('../lib/multipart');
+      const obj = nforce.createSObject('Document', {
+        Name: 'MetaOnly',
+        FolderId: '005DEADBEEF'
+      });
+      obj.setId('015DEADBEEF');
+      const form = multipart({ sobject: obj, method: 'PATCH' });
+      const entries = Array.from(form.entries());
+      entries.length.should.equal(1);
+      entries[0][0].should.startWith('entity_');
+    });
+
+    it('should send multipart/form-data content-type with boundary for Document insert', (done) => {
+      let insertResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: '015DEADBEEF', success: true })
+      };
+      let obj = nforce.createSObject('Document', {
+        Name: 'TestDoc',
+        FolderId: '005DEADBEEF'
+      });
+      obj.setAttachment('test.txt', Buffer.from('hello world'));
+      api
+        .getGoodServerInstance(insertResponse)
+        .then(() => org.insert({ sobject: obj, oauth: oauth }))
+        .then((res) => {
+          should.exist(res);
+          res.id.should.equal('015DEADBEEF');
+          let ct = api.getLastRequest().headers['content-type'];
+          ct.should.startWith('multipart/form-data');
+          ct.should.containEql('boundary');
+          api.getLastRequest().method.should.equal('POST');
+        })
+        .then(() => done())
+        .catch((err) => done(err));
+    });
+  });
+
+  describe('#getVersions', () => {
+    it('should use instance_url from oauth instead of hardcoded na1', (done) => {
+      let versionsResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ version: '45.0', url: '/services/data/v45.0' }])
+      };
+      api
+        .getGoodServerInstance(versionsResponse)
+        .then(() => org.getVersions({ oauth: oauth }))
+        .then((res) => {
+          should.exist(res);
+          api.getLastRequest().url.should.equal('/services/data/');
+          api.getLastRequest().method.should.equal('GET');
+        })
+        .then(() => done())
+        .catch((err) => done(err));
     });
   });
 

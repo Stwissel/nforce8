@@ -83,5 +83,21 @@ describe('index', function () {
 
       should.not.exist(org.myplugin4);
     });
+
+    it('should register plugins whose namespace matches Object.prototype keys', function () {
+      const plug = nforce.plugin({ namespace: 'hasOwnProperty' });
+      plug.fn('marker', function () {
+        return 42;
+      });
+      const org = nforce.createConnection({
+        clientId: 'SOME_OAUTH_CLIENT_ID',
+        clientSecret: 'SOME_OAUTH_CLIENT_SECRET',
+        redirectUri: 'http://localhost:3000/oauth/_callback',
+        apiVersion: 'v24.0',
+        environment: 'production',
+        plugins: ['hasOwnProperty']
+      });
+      org.hasOwnProperty.marker().should.equal(42);
+    });
   });
 });
