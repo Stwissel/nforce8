@@ -210,13 +210,13 @@ describe('index', function () {
       obj.getId().should.equal('asalesforceid');
     });
 
-    it('should clear the cache after calling _reset', function () {
+    it('should clear the cache after calling reset', function () {
       let obj = nforce.createSObject('Test_Object__c', {
         Name: 'Test Me',
         Custom_Field__c: 'Blah',
         Id: 'asalesforceid'
       });
-      obj._reset();
+      obj.reset();
       obj._getPayload(true).should.not.have.keys('name', 'custom_field__c');
     });
   });
