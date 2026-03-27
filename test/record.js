@@ -326,6 +326,24 @@ describe('lib/record', function () {
     });
   });
 
+  describe('.fromResponse', function () {
+    it('should create a Record with clean change-tracking', function () {
+      let rec = Record.fromResponse(accData);
+      rec.should.be.instanceOf(Record);
+      rec.get('name').should.equal('Test Account');
+      rec.hasChanged().should.be.false();
+      Object.keys(rec.changed()).length.should.equal(0);
+    });
+
+    it('should track changes made after construction', function () {
+      let rec = Record.fromResponse(accData);
+      rec.set('Name', 'Updated');
+      rec.hasChanged().should.be.true();
+      rec.hasChanged('name').should.be.true();
+      rec.get('name').should.equal('Updated');
+    });
+  });
+
   describe('#_getPayload', function () {
     it('should return all fields when changedOnly is false', function () {
       let acc = new Record(accData);
