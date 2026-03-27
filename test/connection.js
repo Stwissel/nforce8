@@ -340,7 +340,7 @@ describe('index', function () {
         mode: 'multi'
       });
       return org
-        .getIdentity({ oauth: { access_token: 'tok' } })
+        .getIdentity({ oauth: { access_token: 'tok', instance_url: 'https://na1.salesforce.com' } })
         .then(
           () => {
             throw new Error('expected rejection');
