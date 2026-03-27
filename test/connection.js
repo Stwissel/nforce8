@@ -374,20 +374,19 @@ describe('index', function () {
     });
   });
 
-  describe('#_resolveWithRefresh', function () {
+  describe('#_notifyAndResolve', function () {
     it('should resolve with oauth when no onRefresh is set', function () {
       let org = nforce.createConnection({
         clientId: FAKE_CLIENT_ID,
         clientSecret: FAKE_CLIENT_ID,
         redirectUri: FAKE_REDIRECT_URI
       });
-      let opts = { oauth: { access_token: 'test123' }, executeOnRefresh: true };
-      return org._resolveWithRefresh(opts, {}).then((result) => {
+      return org._notifyAndResolve({ access_token: 'test123' }, {}).then((result) => {
         result.access_token.should.equal('test123');
       });
     });
 
-    it('should call onRefresh callback when set and executeOnRefresh is true', function () {
+    it('should call onRefresh callback when onRefresh is set', function () {
       let refreshCalled = false;
       let org = nforce.createConnection({
         clientId: FAKE_CLIENT_ID,
@@ -400,12 +399,9 @@ describe('index', function () {
           cb(null);
         }
       });
-      let opts = {
-        oauth: { access_token: 'new_token' },
-        executeOnRefresh: true
-      };
+      let newOauth = { access_token: 'new_token' };
       let oldOauth = { access_token: 'old_token' };
-      return org._resolveWithRefresh(opts, oldOauth).then((result) => {
+      return org._notifyAndResolve(newOauth, oldOauth).then((result) => {
         refreshCalled.should.be.true();
         result.access_token.should.equal('new_token');
       });
@@ -420,17 +416,15 @@ describe('index', function () {
           cb(new Error('refresh failed'));
         }
       });
-      let opts = {
-        oauth: { access_token: 'test' },
-        executeOnRefresh: true
-      };
-      return org._resolveWithRefresh(opts, {}).then(
+      return org._notifyAndResolve({ access_token: 'test' }, {}).then(
         () => { throw new Error('should have rejected'); },
         (err) => { err.message.should.equal('refresh failed'); }
       );
     });
+  });
 
-    it('should skip onRefresh when executeOnRefresh is false', function () {
+  describe('#_resolveOAuth', function () {
+    it('should resolve with oauth without calling onRefresh', function () {
       let refreshCalled = false;
       let org = nforce.createConnection({
         clientId: FAKE_CLIENT_ID,
@@ -441,11 +435,7 @@ describe('index', function () {
           cb(null);
         }
       });
-      let opts = {
-        oauth: { access_token: 'test' },
-        executeOnRefresh: false
-      };
-      return org._resolveWithRefresh(opts, {}).then((result) => {
+      return org._resolveOAuth({ access_token: 'test' }).then((result) => {
         refreshCalled.should.be.false();
         result.access_token.should.equal('test');
       });
