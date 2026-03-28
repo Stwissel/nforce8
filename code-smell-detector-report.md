@@ -1,725 +1,681 @@
-# Code Smell Detection Report: nforce8
+# Code Smell Detection Report — nforce8
 
-## Executive Summary
-
-**nforce8** is a Node.js REST API wrapper for Salesforce (~1,100 lines of production code, 13 source files). The codebase recently underwent a significant architectural refactoring that split a monolithic `index.js` (~1,089 lines) into domain-focused modules (`lib/auth.js`, `lib/api.js`, `lib/http.js`). That refactoring eliminated the largest prior issues. What remains is a well-structured, focused library with a small number of specific, addressable issues.
-
-- **Total issues found**: 28
-- **High Severity**: 4
-- **Medium Severity**: 12
-- **Low Severity**: 12
-- **Overall Grade**: B
+**Analysis Date:** 2026-03-27
+**Codebase:** nforce8 (Node.js Salesforce REST API wrapper)
+**Primary Language:** JavaScript (CommonJS, Node.js ≥22)
+**Frameworks / Libraries:** Faye (streaming), mime-types, Mocha + should.js (tests)
+**Total Source Lines Analyzed:** ~3,291 (lib + index + test)
 
 ---
 
-## Project Analysis
+## Executive Summary
 
-### Languages and Frameworks
-- **Primary language**: JavaScript (ES2022, CommonJS modules, `'use strict'`)
-- **Runtime**: Node.js >= 22.0
-- **Testing**: Mocha + should.js + NYC (coverage)
-- **Linting**: ESLint 10 (flat config)
-- **Key dependencies**: `faye` (Streaming API), `mime-types` (multipart uploads)
+The codebase has undergone a recent refactoring that split the original monolithic `index.js` (~1,089 lines) into several smaller modules. That effort resolved the most severe architectural smell (God Object). What remains is a well-functioning but still imperfect codebase. Fourteen distinct code smells are identified across three severity tiers. The most impactful remaining issues center on an **untyped, unconstrained options bag** that is mutated and passed everywhere, **duplicated patterns** within `lib/api.js`, **indecent exposure** of private Record internals, and a **Flag Argument** controlling refresh behavior. None of the remaining smells constitute architectural disasters, but several increase maintenance cost noticeably.
 
-### Project Structure
+| Severity | Count |
+|----------|-------|
+| High     | 3     |
+| Medium   | 7     |
+| Low      | 4     |
+| **Total**| **14**|
+
+---
+
+## Project Structure
+
 ```
-index.js              (77 lines)   - Composition root / public API
-lib/api.js            (509 lines)  - CRUD, query, search, streaming
-lib/auth.js           (265 lines)  - OAuth authentication flows
-lib/http.js           (195 lines)  - HTTP fetch infrastructure
-lib/record.js         (181 lines)  - SObject record with change tracking
-lib/connection.js     (105 lines)  - ES6 Connection class + option validation
-lib/optionhelper.js   (140 lines)  - Request option builder
-lib/fdcstream.js      (101 lines)  - Faye streaming client
-lib/plugin.js         (52 lines)   - Plugin extension system
-lib/util.js           (65 lines)   - Type-checking utilities
-lib/errors.js         (13 lines)   - Error factories
-lib/constants.js      (46 lines)   - Constants + defaults
-test/                               - Mocha test suite (mock-based)
+nforce8/
+  index.js          (77 lines)   — entry point, Connection constructor
+  lib/
+    api.js          (493 lines)  — all Salesforce API methods
+    auth.js         (263 lines)  — OAuth flows
+    http.js         (189 lines)  — fetch wrappers, retry logic
+    connection.js   (88 lines)   — options validation
+    record.js       (177 lines)  — SObject record class
+    fdcstream.js    (99 lines)   — Faye streaming client
+    optionhelper.js (106 lines)  — URI and header builder
+    multipart.js    (56 lines)   — multipart/form-data builder
+    util.js         (77 lines)   — type checkers, header helpers
+    constants.js    (52 lines)   — URLs and default config
+    errors.js       (13 lines)   — error factories
+    plugin.js       (52 lines)   — plugin registration
+  test/
+    connection.js   (451 lines)
+    record.js       (361 lines)
+    crud.js         (242 lines)
+    query.js        (204 lines)
+    errors.js       (68 lines)
+    integration.js  (68 lines)
+    plugin.js       (108 lines)
+    util.js         (47 lines)
+    mock/sfdc-rest-api.js (131 lines)
 ```
-
-### Baseline Quality Observations
-The post-refactoring codebase is substantially cleaner than the original 1,089-line monolith. The module split follows clear domain boundaries. Most standard anti-patterns (global state, deeply nested callbacks, magic numbers in business logic) have been eliminated or are minimal. The remaining issues are concentrated in four areas: quote-style inconsistency (an active lint failure), two dead classes/artifacts of the refactoring, structural design trade-offs in the mixin-based Connection pattern, and a handful of specific method-level concerns.
 
 ---
 
 ## High Severity Issues (Architectural Impact)
 
-### H1 — Inconsistent Style / Active Lint Failure (182 errors)
-**Category**: Lexical Abusers — Inconsistent Style
-**Files affected**: `index.js`, `lib/api.js`, `lib/auth.js`, `lib/http.js`, `lib/multipart.js`, `lib/plugin.js`
-**SOLID violation**: None directly, but CI will fail on lint.
+### HS-1: Primitive Obsession — The Unconstrained `opts` Property Bag
 
-**Description**: Running `npm run lint` produces **182 ESLint errors**, all of the form `Strings must use singlequote`. The project's ESLint configuration (`eslint.config.js`) mandates single-quoted strings, but the six files listed above were written using double quotes throughout. The files that were *not* part of the recent refactoring (`lib/record.js`, `lib/connection.js`, `lib/constants.js`, `lib/util.js`, `lib/fdcstream.js`, `lib/errors.js`) all use single quotes correctly.
+**Category:** Data Dealers / Primitive Obsession / Mutable Data
+**Files:** `lib/api.js` (all 26 API functions), `lib/http.js`, `lib/auth.js`, `lib/optionhelper.js`
+**Violated Principles:** Single Responsibility, Dependency Inversion, Information Hiding
 
-**Impact**: This is a CI-blocking issue. No pull request or automated pipeline that runs `npm run lint` will pass. It also makes the codebase stylistically incoherent: two incompatible quoting styles are used in the same project.
+**Description:**
+Every API function in `lib/api.js` receives a plain object (`data`), passes it through `_getOpts()`, then **mutates** that same object by assigning properties like `opts.resource`, `opts.method`, `opts.body`, `opts.uri`, and `opts.multipart` before passing it downstream to `_apiRequest`. The same object eventually reaches `optionhelper.getApiRequestOptions()`, which reads these mutated properties to build the final HTTP request.
 
-**Evidence** (sample):
+This plain object acts as a global, mutable context bag with no declared schema. Its shape is implicit and only discoverable by reading every function that touches it. The `_retryCount` and `_refreshResult` properties are even injected into it at runtime by `http.js` as out-of-band control signals.
+
+**Evidence (selected lines):**
+
+`lib/api.js:34–41` — `getPasswordStatus` mutates `opts.resource` and `opts.method`.
+`lib/api.js:125–138` — `insert` adds `opts.multipart` or `opts.body` depending on type.
+`lib/http.js:174–178` — retry logic injects `opts._retryCount` and `opts._refreshResult` into the same opts bag.
+
+```javascript
+// lib/http.js lines 174-178
+opts._refreshResult = res;
+opts._retryCount = 1;
+return this._apiRequest(opts);
 ```
-/Users/stw/Code/nforce8/index.js
-   1:1   error  Strings must use singlequote  quotes
-/Users/stw/Code/nforce8/lib/api.js
-   1:1   error  Strings must use singlequote  quotes
-... (182 total across 6 files)
-```
 
-**Refactoring**: Run `npx eslint . --fix` to auto-correct all 182 violations in one pass. Enforce via pre-commit hook so it cannot reoccur.
+**Impact:**
+- No static analysis can verify what shape `opts` must have for any given call.
+- Downstream changes to any function touching `opts` can silently break other functions.
+- The `_retryCount` and `_refreshResult` sentinel properties are Temporary Fields.
+- Increases cognitive load; every maintainer must trace the full mutation chain.
+
+**Refactoring Suggestion:**
+Introduce a typed request builder pattern. Create a `RequestBuilder` or a `buildRequest(opts)` function that takes well-defined inputs and returns an immutable `RequestOptions` object. Do not mutate the caller's `opts` in transit.
 
 ---
 
-### H2 — Dead Class (Lazy Element / Dispensable)
-**Category**: Dispensables — Lazy Element
-**File**: `lib/connection.js` (lines 7–19)
-**SOLID violation**: SRP — the file exports two things with different purposes: a class that is never used and a validation function that is used.
+### HS-2: Indecent Exposure — Record Internal State Accessed from Outside
 
-**Description**: `lib/connection.js` exports both a `Connection` class (an ES6 class) and the standalone function `validateConnectionOptions`. In `index.js`, **only** `validateConnectionOptions` is imported:
+**Category:** Object-Oriented Abusers / Indecent Exposure
+**Files:** `lib/api.js`, `lib/http.js`, `test/record.js`, `test/connection.js`
+**Violated Principles:** Encapsulation, Information Hiding (OOP)
 
-```javascript
-// index.js line 6
-const { validateConnectionOptions } = require("./lib/connection");
-```
+**Description:**
+`Record` uses conventional underscore-prefixed names (`_fields`, `_changed`, `_previous`, `_attachment`, `_getFullPayload`, `_getChangedPayload`, `_reset`) to signal private intent. However, these are accessed directly by multiple external callers:
 
-The `Connection` class itself is never imported or used anywhere in the codebase. The Connection used at runtime is the constructor function defined inside `index.js` itself (lines 16–47). The `Connection` class in `lib/connection.js` is an unused artifact — likely a remnant of an intended but incomplete migration to ES6 classes during the refactoring.
+- `lib/api.js:135` — `opts.sobject._getFullPayload()`
+- `lib/api.js:149` — `opts.sobject._getChangedPayload()`
+- `lib/http.js:82–83` — `sobject._reset` existence check and call
+- `test/record.js:41` — `acc._fields` read directly
+- `test/record.js:48–55` — `acc._changed`, `acc._previous` direct access
+- `test/record.js:160` — `acc._fields.id` verified directly
+- `test/record.js:217–218, 244–245, etc.` — direct mutation of `acc._changed` and `acc._previous`
+- `test/connection.js:191–193` — `obj._fields` property inspection
 
-Furthermore, the `Connection` class in `lib/connection.js` duplicates initialization logic that already exists in `index.js`: both apply `defaultOptions`, call `validateConnectionOptions`, and normalize `environment`/`mode`. This is a subtle form of **Duplicated Code** and **Speculative Generality** (the class exists "for future use" but serves no current purpose).
+The test files' direct mutations of `_changed` and `_previous` indicate that the public API does not provide sufficient observability for tests, which forces them to reach inside.
 
-**Impact**: Confusion for maintainers reading the file; risk that someone modifies `lib/connection.js`'s `Connection` class believing it is the real one; maintenance burden of keeping both in sync.
+**Impact:**
+- The `Record` internal data representation cannot be changed without updating callers in `lib/api.js`, `lib/http.js`, and test files.
+- Tests that mutate `_changed = new Set()` directly are coupling themselves to the implementation, making them brittle.
 
-**Refactoring**: Either (a) complete the migration — replace the constructor function in `index.js` with the ES6 class from `lib/connection.js` and add the mixin assignment there — or (b) remove the unused `Connection` class from `lib/connection.js` and rename the file to `lib/validation.js` to match its actual single export.
-
----
-
-### H3 — Global Mutable Module-Level State (Global Data)
-**Category**: Data Dealers — Global Data
-**File**: `lib/plugin.js` (line 5)
-**SOLID violation**: DIP — callers cannot inject a plugin registry; they depend on a module-level singleton.
-
-**Description**:
-```javascript
-const plugins = Object.create(null);
-```
-This object is a module-level singleton that accumulates all registered plugins for the lifetime of the process. Because Node.js caches `require()` results, this means:
-
-1. Any test that registers a plugin affects all subsequent tests (the test suite in `test/plugin.js` relies on this implicitly).
-2. There is no way to reset or isolate the plugin registry between test runs without re-requiring the module.
-3. In multi-tenant or serverless environments where the module cache persists across requests, plugins leak between tenants.
-
-The `plugin()` function throws if a duplicate namespace is registered without `override: true`, which partially mitigates production impact, but the underlying design remains a global singleton.
-
-**Impact**: Testing fragility (tests register plugins that persist); limited reusability; hidden coupling between calling code and module-level state.
-
-**Refactoring**: Encapsulate the plugin registry inside a `PluginRegistry` class or accept a registry instance as a constructor parameter to `createConnection`. This is a larger change but would align with the DIP.
+**Refactoring Suggestion:**
+Add a `reset()` public method (the underscore prefix is the only signal; make it truly public if it is part of the API). Add a `clearChanges()` or use `_reset()` publicly. Expose `toPayload(changedOnly)` as the single public serialization method used by `api.js`. Provide a `resetForTest()` or `clearState()` method usable by tests instead of direct property assignment.
 
 ---
 
-### H4 — Primitive Obsession: Untyped OAuth Object
-**Category**: Data Dealers — Primitive Obsession
-**Files**: `lib/auth.js`, `lib/api.js`, `lib/http.js`, `lib/fdcstream.js`, `lib/optionhelper.js`
+### HS-3: Duplicated Code — Repeated `opts.sobject ? opts.sobject.X : opts.X` Pattern
 
-**Description**: The OAuth token object (`{ access_token, instance_url, refresh_token, id, ... }`) is a plain, unvalidated JavaScript object that flows through every method in the codebase. There is no `OAuth` class, no type guard, and no schema. The only validation point is `util.validateOAuth()` which checks for two fields:
+**Category:** Dispensables / Duplicated Code
+**File:** `lib/api.js` (lines 38, 46, 176–177, 212–213, 223, 232, 241)
+**Violated Principles:** DRY
+
+**Description:**
+The pattern of resolving an ID or type from either an sobject or a plain opts property is repeated five times across `lib/api.js`:
 
 ```javascript
-const validateOAuth = (oauth) => {
-  return oauth && oauth.instance_url && oauth.access_token;
-};
+// Lines 38, 46
+let id = opts.sobject ? opts.sobject.getId() : opts.id;
+
+// Lines 176-177
+const type = opts.sobject ? opts.sobject.getType() : opts.type;
+const id = opts.sobject ? opts.sobject.getId() : opts.id;
+
+// Lines 212-213
+const type = (opts.sobject ? opts.sobject.getType() : opts.type).toLowerCase();
+
+// Lines 223, 232, 241
+let id = opts.sobject ? util.findId(opts.sobject) : opts.id;
 ```
 
-But `validateOAuth` is not called before most API operations — it is only available as a utility. In practice:
+Three different approaches are used: `sobject.getId()`, `sobject.getId()`, and `util.findId(opts.sobject)`. This is an Oddball Solution: the same intent resolved three different ways.
 
-- `lib/http.js` accesses `opts.oauth?.refresh_token` (line 178) with optional chaining, implying it may be absent.
-- `lib/fdcstream.js` accesses `opts.oauth.instance_url` (line 49) without any null check — a crash if `oauth` is undefined.
-- `lib/optionhelper.js` accesses `opts.oauth.instance_url` (line 72) without null check.
-- `lib/api.js` builds URIs from `opts.oauth.instance_url` in six places without guards.
-- `lib/auth.js` mutates the oauth object directly via `Object.assign(opts.oauth, res)` (lines 151–152, 205–206).
+**Impact:**
+- A change to how IDs or types are resolved (e.g., supporting a new ID field) must be replicated in multiple places.
+- The inconsistency between `sobject.getId()` and `util.findId(opts.sobject)` in otherwise identical functions is a latent bug risk.
 
-The absence of an `OAuth` value type means that any misspelling, missing field, or partial token object fails at runtime with an obscure `TypeError: Cannot read property 'instance_url' of undefined` rather than a clear domain error.
-
-**Impact**: Fragile runtime behavior; hard-to-debug errors; inability to refactor oauth handling safely; violates Fail Fast principle.
-
-**Refactoring**: Create an `OAuth` class or at minimum a factory function `createOAuth(data)` that validates required fields on construction. Replace scattered access patterns with method calls. Use `validateOAuth()` consistently before API calls, or enforce it in `_getOpts()`.
+**Refactoring Suggestion:**
+Extract helper functions: `resolveId(opts)` and `resolveType(opts)`. Centralize the resolution in `_getOpts()` or as standalone utility functions. Apply consistently.
 
 ---
 
 ## Medium Severity Issues (Design Problems)
 
-### M1 — Constructor Function vs. ES6 Class Inconsistency
-**Category**: Object-Oriented Abusers — Inconsistent Style
-**File**: `index.js` (lines 16–47), `lib/connection.js`
+### MS-1: Duplicated Environment Selection Logic
 
-**Description**: `index.js` defines `Connection` as a traditional constructor function:
+**Category:** Change Preventers / Duplicated Code
+**File:** `lib/auth.js` (lines 86–89, 113, 167, 219–221)
+**Violated Principles:** DRY, Open/Closed Principle
+
+**Description:**
+The sandbox/production URL selection is repeated three times in `auth.js`:
+
 ```javascript
-const Connection = function (opts) { ... };
-Object.assign(Connection.prototype, httpMethods, authMethods, apiMethods);
+// Line 113
+opts.uri = this.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
+
+// Line 167
+opts.uri = this.environment === 'sandbox' ? this.testLoginUri : this.loginUri;
+
+// Lines 219-221
+opts.uri = this.environment === 'sandbox'
+  ? this.testRevokeUri
+  : this.revokeUri;
 ```
-Meanwhile `lib/connection.js` defines `Connection` as an ES6 class:
+
+Additionally, `getAuthUri()` (lines 84–89) has its own if/else block for the same selection. A new environment type (e.g., a government cloud requiring its own endpoints) would require changes in four separate locations.
+
+**Impact:**
+- Adding a third environment (e.g., government sandbox) would require modifying `constants.js`, `connection.js` validation, and four places in `auth.js`.
+- Copy-paste error risk is high when similar ternary expressions are maintained separately.
+
+**Refactoring Suggestion:**
+Introduce a helper method on the Connection prototype:
 ```javascript
-class Connection {
-  oauth; username; password; securityToken;
-  constructor(opts) { ... }
-}
+_loginEndpoint() { return this.environment === 'sandbox' ? this.testLoginUri : this.loginUri; }
+_authEndpoint()  { return this.environment === 'sandbox' ? this.testAuthEndpoint : this.authEndpoint; }
+_revokeEndpoint(){ return this.environment === 'sandbox' ? this.testRevokeUri : this.revokeUri; }
 ```
-
-These two definitions coexist in the codebase without any relationship to each other. The constructor function style is what actually runs. The codebase convention is mixed: `Record`, `Plugin`, `Subscription`, and `Client` are all ES6 classes, but the primary `Connection` type is a constructor function. This violates the principle of consistent idioms and creates cognitive dissonance.
-
-**Refactoring**: Consolidate to ES6 class syntax for `Connection` in `index.js` (or in `lib/connection.js`) to match the style of all other classes.
+Or encapsulate endpoint selection in `constants.js` with a lookup map keyed by environment name.
 
 ---
 
-### M2 — Mixin-Based Prototype Pollution (Indecent Exposure)
-**Category**: Object-Oriented Abusers — Inappropriate Static / Indecent Exposure
-**File**: `index.js` (line 50)
+### MS-2: Duplicated SAML Assertion Type Magic String
 
-**Description**:
+**Category:** Lexical Abusers / Magic Number (String variant) / Duplicated Code
+**File:** `lib/auth.js` (lines 130 and 182)
+**Violated Principles:** DRY
+
+**Description:**
+The SAML assertion type URN string is duplicated in `authenticate()` and `refreshToken()`:
+
 ```javascript
-Object.assign(Connection.prototype, httpMethods, authMethods, apiMethods);
+// Line 130 (in authenticate)
+bopts.assertion_type = 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';
+
+// Line 182 (in refreshToken)
+refreshOpts.assertion_type = 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';
 ```
-All methods from three modules are mixed directly onto `Connection.prototype`. This creates several issues:
 
-1. **Name collision risk**: If two modules export a function with the same name, the last one silently wins. There is no conflict detection.
-2. **Indecent Exposure**: Internal implementation methods (`_apiRequest`, `_apiAuthRequest`, `_getOpts`, `_queryHandler`, `_resolveWithRefresh`) become publicly accessible members on every `Connection` instance, even though they are intended as private.
-3. **Naming convention as access control**: The underscore prefix convention is used to signal "private" but does not enforce it. Test files directly call `org._resolveWithRefresh()` and `acc._getPayload()`, which couples tests to internals.
+This is a verbose, opaque string with no local explanation. A typo in either location would produce a silent authentication failure.
 
-**Impact**: Fragile interface; no encapsulation; any caller can invoke internal methods and disrupt state.
-
-**Refactoring**: Keep the mixin pattern but use ES6 private class fields (`#`) when migrating to a class. At minimum, document which exports are public API vs. internal.
+**Refactoring Suggestion:**
+Define `const SAML_ASSERTION_TYPE = 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser';` at the top of `auth.js` or in `constants.js`, and reference it in both places.
 
 ---
 
-### M3 — `OptionHelper` Factory with Unnecessary Constructor
-**Category**: Obfuscators — Clever Code; Dispensables — Lazy Element
-**File**: `lib/optionhelper.js` (lines 33–140)
+### MS-3: Flag Argument — `executeOnRefresh` Boolean
 
-**Description**: `OptionHelper` is a constructor function that takes no arguments, has no state (the comment `// Defaults if needed` alludes to a removed feature), and returns an immutable object via `Object.freeze`. It is instantiated immediately at module load:
+**Category:** Functional Abusers / Flag Argument
+**File:** `lib/auth.js` (lines 96, 109, 163, 233, 239)
+**Violated Principles:** Single Responsibility Principle, method clarity
 
-```javascript
-// lib/http.js line 5
-const optionHelper = require('./optionhelper')();
-```
-
-The constructor serves no purpose — there is nothing to initialize, no instance state, no defaults. The two functions `getApiRequestOptions` and `getFullUri` are pure functions. They should simply be exported as module-level functions:
+**Description:**
+The `executeOnRefresh` flag is passed through `opts` to control whether `_resolveWithRefresh` calls the `onRefresh` callback. This is a classic Flag Argument anti-pattern (Robert C. Martin, 2008): a boolean that changes the function's behavior in a way that should instead be two distinct methods or a clearly named parameter.
 
 ```javascript
-module.exports = { getApiRequestOptions, getFullUri };
+// lib/auth.js:96
+if (this.onRefresh && opts.executeOnRefresh === true) {
 ```
 
-The current pattern requires callers to know to invoke `require('./optionhelper')()` (with the trailing `()` call), which is surprising and undocumented.
+The flag is set to `false` in `authenticate()` (line 109), `true` in `refreshToken()` (line 163) and `autoRefreshToken()` (line 233), and threaded through the opts chain making it invisible to callers.
 
-**Refactoring**: Remove the `OptionHelper` constructor. Export the two functions directly from the module. Update `lib/http.js` accordingly.
+**Impact:**
+- Callers cannot tell from a call site whether the refresh callback will be invoked.
+- The flag value is easily lost or incorrectly set when introducing new auth flows.
+
+**Refactoring Suggestion:**
+Replace with two explicit methods or pass an options object with a descriptive key like `{ notifyOnRefresh: true }`, and rename the method to reflect its purpose clearly.
 
 ---
 
-### M4 — `revokeToken` Contains Hardcoded URLs (Magic Number)
-**Category**: Lexical Abusers — Magic Number; Data Dealers — Global Data
-**File**: `lib/auth.js` (lines 219–222)
+### MS-4: Mutated Options Bag in `authenticate()` — Mutable Data / Side Effects
 
-**Description**: The `revokeToken` function hardcodes the Salesforce OAuth revoke endpoint URLs directly in the function body, bypassing the constants module entirely:
+**Category:** Data Dealers / Mutable Data / Side Effects
+**File:** `lib/auth.js` (lines 108–157)
+**Violated Principles:** Principle of Least Surprise, Command-Query Separation
+
+**Description:**
+`authenticate()` receives `data`, calls `_getOpts()`, then mutates `opts.oauth` by merging the server response directly into it (`Object.assign(opts.oauth, res)`). Since `_getOpts()` can return a reference to the caller's own data object, this mutation propagates back to the caller's OAuth object silently.
 
 ```javascript
-if (this.environment === 'sandbox') {
-  opts.uri = 'https://test.salesforce.com/services/oauth2/revoke';
-} else {
-  opts.uri = 'https://login.salesforce.com/services/oauth2/revoke';
-}
+// lib/auth.js:151-153
+return this._apiAuthRequest(opts).then((res) => {
+  let old = { ...opts.oauth };
+  Object.assign(opts.oauth, res);  // mutates caller's object
 ```
 
-All other auth methods use `this.testLoginUri` or `this.loginUri` (which are configurable connection options). The revoke endpoint is structurally parallel to the token endpoint (same subdomain structure), yet it hardcodes the domain rather than deriving it from `this.loginUri`. This creates a discrepancy: if a user customizes `loginUri` for a private Salesforce instance (common in enterprise deployments), `revokeToken` will still call the wrong endpoint.
+The same pattern occurs in `refreshToken()` (lines 204–208).
 
-**Refactoring**: Add `revokeUri` and `testRevokeUri` to the `defaultOptions` in `lib/constants.js` and use `this.revokeUri`/`this.testRevokeUri` in `revokeToken()`, consistent with how the other auth methods work.
+**Impact:**
+- The caller's OAuth object is silently modified; this is an unannounced side effect.
+- In multi-user mode, if the caller reuses an OAuth object reference, it becomes stale in hard-to-diagnose ways.
+
+**Refactoring Suggestion:**
+Return a new OAuth object: `return { ...opts.oauth, ...res }`. The caller should be responsible for updating their stored OAuth reference using the return value, which is already the expected API contract.
 
 ---
 
-### M5 — Duplicated URL Construction Pattern (Duplicated Code)
-**Category**: Dispensables — Duplicated Code
-**File**: `lib/api.js` (lines 386–425)
+### MS-5: Lazy Element — Trivial Getter/Setter Methods in `auth.js`
 
-**Description**: The same pattern for building a URL from `opts.oauth.instance_url + requireForwardSlash(opts.url)` appears four consecutive times across `getUrl`, `putUrl`, `postUrl`, and `deleteUrl`:
+**Category:** Dispensables / Lazy Element
+**File:** `lib/auth.js` (lines 3–33)
+**Violated Principles:** YAGNI
+
+**Description:**
+Eight functions (`getOAuth`, `setOAuth`, `getUsername`, `setUsername`, `getPassword`, `setPassword`, `getSecurityToken`, `setSecurityToken`) are simple one-line property accessors that add no transformation, validation, or encapsulation:
 
 ```javascript
-// getUrl (line 390)
-opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-opts.method = 'GET';
-
-// putUrl (lines 399-403)
-opts.uri = opts.oauth.instance_url + requireForwardSlash(opts.url);
-opts.method = 'PUT';
-if (opts.body && typeof opts.body !== 'string') {
-  opts.body = JSON.stringify(opts.body);
-}
-// postUrl and deleteUrl follow the same pattern
+const getOAuth = function () { return this.oauth; };
+const setOAuth = function (oauth) { this.oauth = oauth; };
+const getUsername = function () { return this.username; };
+// etc.
 ```
 
-Additionally, the body JSON serialization check `if (opts.body && typeof opts.body !== 'string') { opts.body = JSON.stringify(opts.body); }` is duplicated in both `putUrl` and `postUrl`.
+These functions exist purely to provide a formal API for properties that are already public on the Connection prototype. They do not enforce types, validate inputs, or hide implementation details. They are ceremonial wrappers.
 
-**Refactoring**: Extract a private `_buildUrlOpts(data, method)` helper that sets the common fields, then handle body serialization once. Or consolidate into a single `_urlRequest(data, method)` method that all four delegate to.
+**Impact:**
+- Adds 30 lines of boilerplate that reads as complex but adds no value.
+- Inflates the exported method count on Connection.
+
+**Refactoring Suggestion:**
+Either remove them (direct property access is idiomatic in Node.js for simple config data) or consolidate into a single `getConfig(key)` / `setConfig(key, value)` pattern if controlled access is desired.
 
 ---
 
-### M6 — `_queryHandler` Exposed as Public API (Indecent Exposure)
-**Category**: Object-Oriented Abusers — Indecent Exposure
-**File**: `lib/api.js` (line 499)
+### MS-6: String Concatenation URL Building — Magic Path Fragments
 
-**Description**: `_queryHandler` (conventionally prefixed with `_` to indicate private) is included in `module.exports` and therefore becomes a method on every `Connection` instance via the prototype mixin. The method is an implementation detail of `query()` and `queryAll()` — callers have no legitimate reason to call it directly. Tests do not call it directly either.
+**Category:** Lexical Abusers / Magic Number (path strings)
+**File:** `lib/api.js` (lines 39, 47, 99, 108, 130, 144, 159, 169, 179, 224, 233, 242)
+**Violated Principles:** DRY, Avoid Magic Literals
 
-Exposing it creates a public API surface that the library must maintain as stable, limits future refactoring freedom, and violates the principle of minimal public interface.
+**Description:**
+All twelve API resource paths are constructed by string concatenation with literal path segments:
 
-**Refactoring**: Remove `_queryHandler` from the `module.exports` object. Callers within `api.js` can continue to call it as a local function since it is defined in the same module scope. Add `respToJson` (line 326) to the same cleanup.
+```javascript
+opts.resource = '/sobjects/user/' + id + '/password';
+opts.resource = '/sobjects/' + type;
+opts.resource = '/sobjects/' + type + '/describe';
+opts.resource = '/sobjects/' + type + '/' + id;
+opts.resource = '/sobjects/' + type + '/' + extIdField + '/' + extId;
+opts.resource = '/sobjects/attachment/' + id + '/body';
+opts.resource = '/sobjects/document/' + id + '/body';
+opts.resource = '/sobjects/contentversion/' + id + '/versiondata';
+```
+
+The prefix `/sobjects/` appears eight times as a literal string. If Salesforce changes the API path structure (it does not, but a version migration might), all eight occurrences must be found and updated.
+
+Additionally, `lib/api.js:75` uses `this.loginUri.replace('/oauth2/token', '')` to derive the base URI for `getVersions`. This relies on knowing the internal structure of the stored URI — a fragile assumption.
+
+```javascript
+opts.uri = this.loginUri.replace('/oauth2/token', '') + '/services/data/';
+```
+
+**Refactoring Suggestion:**
+Introduce path-building helpers such as:
+```javascript
+const sobjectPath = (type, ...segments) => ['/sobjects', type, ...segments].join('/');
+```
+Store the base services data URL as a constant or derive it from `instance_url` rather than string-replacing `loginUri`.
 
 ---
 
-### M7 — `stream` Is a Transparent Alias (Middle Man)
-**Category**: Dispensables — Lazy Element; Couplers — Middle Man
-**File**: `lib/api.js` (lines 473–475)
+### MS-7: Inconsistent `let` vs `const` Usage
 
-**Description**:
-```javascript
-const stream = function (data) {
-  return this.subscribe(data);
-};
-```
-`stream` is a single-line function that does nothing but call `subscribe`. It adds no logic, no parameter transformation, no error handling. This inflates the public API surface without adding value and could confuse users who wonder whether `stream` and `subscribe` are semantically different.
+**Category:** Lexical Abusers / Inconsistent Style
+**File:** `lib/api.js` (throughout), `lib/auth.js`
+**Violated Principles:** Consistency
 
-**Refactoring**: Either remove `stream` entirely (breaking change) and document the migration to `subscribe`, or add a JSDoc `@deprecated` tag with a migration note.
+**Description:**
+`lib/api.js` uses `let opts` for all but 5 of its 26 `opts` variable declarations, even though in most cases `opts` is not reassigned after `_getOpts()`. This is inconsistent with JavaScript best practice (use `const` when not reassigning) and inconsistent with the handful of functions that do use `const opts`.
 
----
+Count: 21 occurrences of `let opts` vs. 5 occurrences of `const opts` in `lib/api.js`.
 
-### M8 — `isObject` Has a Null Bug (Side Effects)
-**Category**: Functional Abusers — Side Effects; Object-Oriented Abusers — Primitive Obsession
-**File**: `lib/util.js` (line 32), used in `lib/api.js` (lines 13–23)
+In `lib/auth.js`, the pattern is reversed with a mix of `const opts` and `let opts` across the four exported functions.
 
-**Description**:
-```javascript
-const isObject = (candidate) => typeof candidate === 'object';
-```
+**Impact:**
+- Reduces readability; a `const` declaration communicates intent that the binding will not change.
+- Makes linters unable to catch accidental reassignment.
 
-In JavaScript, `typeof null === 'object'` is `true`. Therefore `isObject(null)` returns `true`. In `_getOpts` (line 15), this means `null` would be treated as an object:
-
-```javascript
-} else if (util.isObject(d)) {
-  data = d;   // data becomes null
-}
-```
-
-The check at line 13 (`d && !util.isObject(d)`) uses `d` as a truthiness guard, so `null` would not reach this branch. But the semantic is fragile: `isObject` advertises one behavior and delivers another for `null`. This is a well-known JavaScript footgun. The current version has not caused a reported bug because callers pass `undefined` rather than `null`, but it is a latent defect.
-
-**Refactoring**: Fix `isObject` to exclude `null`:
-```javascript
-const isObject = (candidate) => candidate !== null && typeof candidate === 'object';
-```
-Add a unit test for `isObject(null)`.
-
----
-
-### M9 — `let self = this` Anti-Pattern
-**Category**: Object-Oriented Abusers — Inappropriate Static
-**File**: `lib/fdcstream.js` (lines 9, 45)
-
-**Description**:
-```javascript
-constructor(opts, client) {
-  super();
-  let self = this;   // line 9
-  ...
-  this._sub = client._fayeClient.subscribe(this._topic, function (d) {
-    self.emit('data', d);   // uses self instead of this
-  });
-```
-
-The `let self = this` pattern was needed pre-ES6 to capture `this` in regular function expressions. Since the codebase uses ES6 classes and targets Node.js >= 22, arrow functions (`(d) => this.emit('data', d)`) are the idiomatic replacement. The `self` variable adds unnecessary indirection.
-
-Both `Subscription` (line 9) and `Client` (line 45) contain this pattern.
-
-**Refactoring**: Replace all `function(...) { self.emit(...) }` callbacks in `fdcstream.js` with arrow functions. Remove the `let self = this` declarations.
-
----
-
-### M10 — `arguments.length` Dispatch in `Record.set`
-**Category**: Obfuscators — Conditional Complexity
-**File**: `lib/record.js` (lines 29–53)
-
-**Description**: The `set` method uses `arguments.length` to dispatch between two calling conventions:
-
-```javascript
-Record.prototype.set = function (field, value) {
-  let data = {};
-  if (arguments.length === 2) {
-    data[field.toLowerCase()] = value;
-  } else {
-    data = Object.entries(field).reduce(...);
-  }
-```
-
-Using `arguments.length` is an older JavaScript pattern. A cleaner approach detects whether `field` is a string or an object, which is more expressive and does not rely on the implicit `arguments` object (which should be avoided in modern ES6 code). This is an **Oddball Solution** — the rest of the codebase uses modern JavaScript but relies on `arguments` here.
-
-**Refactoring**:
-```javascript
-const data = (typeof field === 'object' && field !== null)
-  ? Object.fromEntries(Object.entries(field).map(([k, v]) => [k.toLowerCase(), v]))
-  : { [field.toLowerCase()]: value };
-```
-
----
-
-### M11 — Duplicated Header Access Pattern in `responseFailureCheck`
-**Category**: Dispensables — Duplicated Code
-**File**: `lib/http.js` (lines 19–31)
-
-**Description**: The response header access pattern — which handles both Fetch API `Headers` objects (with `.get()`) and plain objects — is implemented inline twice within the same function `responseFailureCheck`:
-
-```javascript
-// First copy (lines 19-22): accessing 'error' header
-const headerError =
-  res.headers && typeof res.headers.get === 'function'
-    ? res.headers.get('error')
-    : res.headers && res.headers.error;
-
-// Second copy (lines 27-30): accessing 'content-length' header
-const contentLength =
-  res.headers && typeof res.headers.get === 'function'
-    ? res.headers.get('content-length')
-    : res.headers && res.headers['content-length'];
-```
-
-The `checkHeaderCaseInsensitive` utility already exists in `lib/util.js` and handles exactly this dual-access pattern. However, it is not used in `responseFailureCheck` — only in `isJsonResponse`. A `getHeader(headers, key)` utility would DRY up this function.
-
-**Refactoring**: Add a `getHeader(headers, key)` helper to `lib/util.js` (or extract from `checkHeaderCaseInsensitive`) and use it for both lookups in `responseFailureCheck`.
-
----
-
-### M12 — `respToJson` Defined After Its Usage Site
-**Category**: Obfuscators — Obscured Intent
-**File**: `lib/api.js` (lines 297 and 326)
-
-**Description**: `respToJson` is called at line 297 inside `handleResponse`, which is a closure within `_queryHandler`. It is defined at line 326 — after the call site. `const` declarations are not hoisted in the way `function` declarations are; they are in the temporal dead zone until their declaration line executes. The call at line 297 is inside a callback that resolves after module initialization, so there is no runtime error — but the code ordering is misleading and relies on a subtle timing dependency that a reader must reason through.
-
-**Refactoring**: Move `respToJson` above `_queryHandler` to follow the convention of defining before use.
+**Refactoring Suggestion:**
+Audit all `let opts` declarations. Where `opts` is never reassigned (the majority of cases), convert to `const opts`.
 
 ---
 
 ## Low Severity Issues (Readability / Maintenance)
 
-### L1 — `"use strict"` with Double Quotes in Strict-Quote Files
-**Category**: Lexical Abusers — Inconsistent Style
-**Files**: `index.js`, `lib/api.js`, `lib/auth.js`, `lib/http.js`, `lib/multipart.js`, `lib/plugin.js`
+### LS-1: What Comment — Comments Explaining the Obvious
 
-**Description**: These files use `"use strict"` (double quotes) while the project convention is `'use strict'` (single quotes). This is a trivial variant of H1. Fixed by the same `eslint --fix` pass.
+**Category:** Other / What Comment
+**Files:** `lib/optionhelper.js`, `lib/http.js`, `lib/api.js`
 
----
-
-### L2 — `getUrl` Method Name Semantically Overloaded (Fallacious Method Name)
-**Category**: Lexical Abusers — Fallacious Method Name
-**File**: `lib/api.js` (lines 386–392), `lib/record.js` (line 68)
-
-**Description**: `Record.prototype.getUrl` returns the SObject's URL from `this.attributes.url` (a string attribute). The `Connection` mixin also has a `getUrl` method (from `lib/api.js`) that makes an HTTP GET request to an arbitrary URL. Both are in the `Connection` ecosystem — `Record` is the data type, `Connection` is the operation host — but the naming is semantically overloaded when both are discussed in documentation or examples.
-
-**Refactoring**: Consider renaming `Record.prototype.getUrl` to `Record.prototype.getSobjectUrl` to distinguish it from the HTTP-fetching `Connection.getUrl`.
-
----
-
-### L3 — No-Op `beforeEach` in Test (Dead Code)
-**Category**: Dispensables — Dead Code
-**File**: `test/record.js` (lines 16–18)
-
-**Description**:
-```javascript
-beforeEach(function (done) {
-  done();
-});
-```
-This `beforeEach` hook does nothing and has always done nothing. It is dead code that adds noise to the test file.
-
-**Refactoring**: Remove the empty `beforeEach`.
-
----
-
-### L4 — Empty Test Bodies (Dead Code / Speculative Generality)
-**Category**: Dispensables — Dead Code; Dispensables — Speculative Generality
-**Files**: `test/record.js` (line 62), `test/plugin.js` (line 35)
-
-**Description**:
-```javascript
-// test/record.js line 62
-it('should allow me to set properties', function () {});
-
-// test/plugin.js line 35
-it('should not allow non-functions when calling fn', function () {});
-```
-Two test cases have been declared as placeholders but never implemented. They pass vacuously (a test with no assertions always passes), which can mask the absence of actual coverage.
-
-**Refactoring**: Either implement the tests or replace with `it.skip(...)` to make the omission explicit.
-
----
-
-### L5 — `client.logout()` Calls Non-Existent Method (Fallacious Method Name)
-**Category**: Lexical Abusers — Fallacious Method Name; Dispensables — Dead Code
-**File**: `test/integration.js` (line 25)
-
-**Description**:
-```javascript
-after(() => {
-  if (client != undefined) {
-    client.logout();   // No such method exists on Connection
-  }
-});
-```
-There is no `logout` method in `lib/api.js`, `lib/auth.js`, or anywhere in the Connection prototype chain. This code would throw `TypeError: client.logout is not a function` if the integration test ever ran with valid credentials. The integration test is currently always skipped for lack of credentials, but this is a latent bug.
-
-**Refactoring**: Replace with `client.revokeToken(...)` (the actual method for token revocation) or remove the teardown.
-
----
-
-### L6 — Stale `'v54.0'` Fallback and Mismatched Default Versions (Magic Number)
-**Category**: Lexical Abusers — Magic Number
-**File**: `lib/constants.js` (line 14)
-
-**Description**:
-```javascript
-const API = process.env.SFDC_API_VERSION || API_PACKAGE_VERSION || 'v54.0';
-```
-The hardcoded fallback `'v54.0'` is the third option in a three-way default chain. `API_PACKAGE_VERSION` reads from `package.json` where it is currently `'v45.0'`. The `v54.0` literal is newer than `v45.0` — which is inconsistent. Both are also stale relative to current Salesforce API versions (Spring '25 = v63.0). The comment `// This needs update for each SFDC release!` indicates intended manual maintenance that is not occurring.
-
-**Refactoring**: Remove the `'v54.0'` hardcoded final fallback; let `API_PACKAGE_VERSION` be the single source of truth. Update `package.json`'s `sfdx.api` field to the current Salesforce API version during release preparation.
-
----
-
-### L7 — Commented-Out Code Block (Dead Code)
-**Category**: Dispensables — Dead Code
-**File**: `test/integration.js` (lines 56–66)
-
-**Description**:
-```javascript
-/*
-  let x = {
-      clientId: "ADFJSD234ADF765SFG55FD54S",
-      ...
-  }
-  */
-```
-A multi-line comment block containing example configuration has been left in the integration test file. Version control history is the appropriate place for removed code.
-
-**Refactoring**: Remove the commented-out block.
-
----
-
-### L8 — `getIdentity` Has Redundant Null Guard Chain (Null Check)
-**Category**: Bloaters — Null Check; Obfuscators — Conditional Complexity
-**File**: `lib/api.js` (lines 54–70)
-
-**Description**: `getIdentity` performs three sequential early rejections that overlap in their validation scope:
+**Description:**
+Several comments describe what the following line does rather than why it exists or what business rule it encodes:
 
 ```javascript
-if (!opts.oauth) {
-  return Promise.reject(new Error("getIdentity requires oauth including access_token"));
-}
-if (!opts.oauth.access_token) {
-  return Promise.reject(new Error("getIdentity requires oauth.access_token"));
-}
-if (!opts.oauth.id) {
-  return Promise.reject(new Error("getIdentity requires oauth.id (identity URL)"));
-}
+// lib/optionhelper.js:33
+// Define the URI to call
+if (opts.uri) {
+
+// lib/optionhelper.js:47
+ropts.method = opts.method || 'GET';
+
+// lib/optionhelper.js:50-51
+// set accept headers
+ropts.headers = { Accept: 'application/json;charset=UTF-8' };
+
+// lib/optionhelper.js:55-56
+// set oauth header
+if (opts.oauth) {
+
+// lib/optionhelper.js:60-61
+// set content-type and body
+
+// lib/optionhelper.js:75
+// process qs
+
+// lib/optionhelper.js:80
+// process request opts
 ```
 
-While the separate error messages add diagnostic value, this pattern is inconsistent with every other API method that performs no pre-validation. Using `util.validateOAuth()` for the first two checks would be consistent.
+These comments are noise that adds length without adding information — the code is already self-explanatory at this level.
 
-**Refactoring**: Use `util.validateOAuth(opts.oauth)` for the combined first/second check, then add the `opts.oauth.id` check separately.
+**Refactoring Suggestion:**
+Remove what-comments. Retain only why-comments that explain non-obvious decisions, such as the `// set oauth header` block (which is not explained — why is it conditional on `opts.oauth` if all API calls require OAuth?).
 
 ---
 
-### L9 — `getLimits` Declares Unused `singleProp: 'type'` (What Comment / Dead Config)
-**Category**: Lexical Abusers — What Comment; Dispensables — Dead Code
-**File**: `lib/api.js` (lines 116–123)
+### LS-2: Speculative Generality — `getUrl`, `putUrl`, `postUrl`, `deleteUrl` via `_urlRequest` Abstraction
 
-**Description**:
+**Category:** Dispensables / Speculative Generality
+**File:** `lib/api.js` (lines 381–406)
+**Violated Principles:** YAGNI
+
+**Description:**
+A private `_urlRequest(data, method)` function is introduced purely to share the implementation of four methods (`getUrl`, `putUrl`, `postUrl`, `deleteUrl`). Each of those four methods is exactly one line delegating to `_urlRequest`. While this is a reasonable DRY extraction, the four public methods each have only one calling pattern and the private function is not referenced anywhere else. The indirection adds a level of abstraction that slows reading without meaningful benefit.
+
 ```javascript
-const getLimits = function (data) {
-  let opts = this._getOpts(data, {
-    singleProp: 'type',   // parses string arg as 'type' — never used
-  });
-  opts.resource = '/limits';  // ignores opts.type entirely
-  opts.method = 'GET';
-  return this._apiRequest(opts);
+const _urlRequest = function (data, method) { ... };
+const getUrl    = function (data) { return _urlRequest.call(this, data, 'GET'); };
+const putUrl    = function (data) { return _urlRequest.call(this, data, 'PUT'); };
+const postUrl   = function (data) { return _urlRequest.call(this, data, 'POST'); };
+const deleteUrl = function (data) { return _urlRequest.call(this, data, 'DELETE'); };
+```
+
+This smell is minor; the extraction is a legitimate refactoring. It is flagged primarily because the body of `_urlRequest` is simple enough that the extraction adds more cognitive overhead (finding the private function) than it saves.
+
+**Note:** This is a judgment call. If `_urlRequest` grows, the abstraction is valuable. Currently it is borderline.
+
+---
+
+### LS-3: Deprecated Method with No Removal Timeline — `stream()`
+
+**Category:** Dispensables / Dead Code (in spirit)
+**File:** `lib/api.js` (lines 458–460)
+**Violated Principles:** YAGNI, Clean API surface
+
+**Description:**
+`stream()` is marked `@deprecated` and simply calls `subscribe()`:
+
+```javascript
+/**
+ * @deprecated Use subscribe() instead. Will be removed in the next major version.
+ */
+const stream = function (data) {
+  return this.subscribe(data);
 };
 ```
 
-`getLimits` configures `singleProp: 'type'` in `_getOpts`, implying that if a string is passed, it will be treated as a `type` property. But the method immediately ignores `opts.type` and uses the fixed resource `/limits`. This is a copy-paste artifact from `getMetadata` or `getDescribe`, which both use `opts.type` in their resource paths.
+The deprecation comment says "Will be removed in the next major version" but does not specify which version that is, and there is no mechanism enforcing this (no warning emitted at call time). In the current major version (3.1.1), there is nothing preventing `stream()` from remaining forever.
 
-**Refactoring**: Remove `singleProp: 'type'` from `getLimits`. The method takes an options object purely for `oauth` in multi-mode.
-
----
-
-### L10 — `apiVersion.substring(1)` Magic Offset (Magic Number)
-**Category**: Lexical Abusers — Magic Number
-**File**: `lib/fdcstream.js` (line 49)
-
-**Description**:
-```javascript
-this._endpoint = opts.oauth.instance_url + '/cometd/' + opts.apiVersion.substring(1);
-```
-
-`substring(1)` strips the leading `'v'` from the version string (e.g., `'v45.0'` becomes `'45.0'`). The literal `1` is a magic number whose meaning is not stated. A reader must know the `apiVersion` format convention to understand why `1` is used.
-
-**Refactoring**:
-```javascript
-const versionNumber = opts.apiVersion.replace(/^v/, '');
-this._endpoint = opts.oauth.instance_url + '/cometd/' + versionNumber;
-```
+**Refactoring Suggestion:**
+Either emit a `process.emitWarning` or `console.warn` at call time to actively push callers toward migrating, or add a concrete version target to the JSDoc. Set a calendar-based removal milestone.
 
 ---
 
-### L11 — Malformed Template Literal in Query Test (Bug Risk)
-**Category**: Dispensables — Dead Code; Lexical Abusers — Fallacious Comment
-**File**: `test/query.js` (line 33)
+### LS-4: Required Setup / Teardown — `_reset()` Called Manually After Reads
 
-**Description**:
+**Category:** Other / Required Setup or Teardown Code
+**File:** `lib/api.js` (lines 192–196, 314–316, 356–362)
+**Violated Principles:** Principle of Least Surprise
+
+**Description:**
+After a record is returned from `getRecord()`, `_queryHandler()`, and `search()`, `_reset()` must be explicitly called on each new Record to mark it as unmodified. This is a required teardown ceremony that callers cannot forget to do on their own — instead, `api.js` does it internally, but it is fragile: if a developer adds a new API method that returns Records and forgets to call `_reset()`, the Record will falsely report all fields as changed.
+
 ```javascript
-let expected = `/services/data/'${apiVersion}/query?q=SELECT+Id+FROM+Account+LIMIT+1`;
+// lib/api.js:192-196 (getRecord)
+return this._apiRequest(opts).then((resp) => {
+  if (!opts.raw) {
+    resp = new Record(resp);
+    resp._reset();   // required ceremony
+  }
+  return resp;
+});
+
+// lib/api.js:314-316 (_queryHandler)
+let rec = new Record(r);
+rec._reset();        // required ceremony
+recs.push(rec);
 ```
-This template literal has a stray single-quote character before `${apiVersion}`. The resulting string is `/services/data/'v45.0/query?...` — with a literal `'` embedded. This will never equal the actual request URL `/services/data/v45.0/query?...`. The broken `expected` value means the `url.should.equal(expected)` assertion in the first `query` test will silently never fire (it gets absorbed by `.catch((err) => should.not.exist(err))`), giving false confidence that the URL check passes.
 
-**Refactoring**: Remove the stray `'`:
+**Refactoring Suggestion:**
+Add a static factory method `Record.fromResponse(data)` that constructs the Record and calls `_reset()` internally, making the ceremony impossible to forget:
+
 ```javascript
-let expected = `/services/data/${apiVersion}/query?q=SELECT+Id+FROM+Account+LIMIT+1`;
+Record.fromResponse = function(data) {
+  const rec = new Record(data);
+  rec._reset();
+  return rec;
+};
 ```
 
 ---
 
-### L12 — Unresolved TODO in Integration Test
-**Category**: Dispensables — Dead Code
-**File**: `test/integration.js` (line 18)
+## Cross-File Pattern Analysis
 
-**Description**:
+### Integration Test Incompleteness
+
+**File:** `test/integration.js`
+**Issue:** Dead setup code / TODO
+
+The integration test contains a `TODO: fix the creds` comment at line 18 inside a `before()` block that also contains a dead code path (`if (creds == null) { // Can't run integration tests }` with the body commented out). There is also a commented-out object literal (lines 57–66) that was clearly a prior attempt at credentials setup and was never removed.
+
 ```javascript
+// test/integration.js:18
 // TODO: fix the creds
+client = nforce.createConnection(creds);
+// ...
+/*
+  let x = {
+      clientId: "ADFJSD234ADF765SFG55FD54S",
+      // ...
+  }
+*/
 ```
-An unresolved `TODO` comment indicates acknowledged but deferred work. The integration test is currently permanently skipped (no credentials in CI), making this comment misleading. The test scaffold exists but is non-functional.
 
-**Refactoring**: Either implement the integration test properly (with documented environment variable requirements) or remove the entire integration test file and track the need as a GitHub issue.
+### Test Coupling to Internals (Amplification of HS-2)
+
+**File:** `test/record.js` (lines 217–218, 244–245, 332–348)
+
+Tests directly assign `acc._changed = new Set()` and `acc._previous = {}` to reset state, bypassing the public `_reset()` method. This means that if `_changed` is changed from a `Set` to a different data structure, or if `_previous` is renamed, all of these test lines must be updated independently. The tests are testing implementation rather than behavior.
+
+### Mock Server Uses Module-Level Mutable State
+
+**File:** `test/mock/sfdc-rest-api.js`
+
+`serverStack` and `requestStack` are module-level mutable arrays (Global Data smell within the test utility):
+
+```javascript
+let serverStack = [];
+let requestStack = [];
+```
+
+Also, `port` is a module-level variable that is mutated by `start()`. This means test files cannot safely run in parallel because they share this mutable module state. The pattern is common in older Node.js test setups but is worth noting.
+
+### Hardcoded Test Credential Repeated in `test/connection.js`
+
+The fake client ID string `'ADFJSD234ADF765SFG55FD54S'` appears 58 times in `test/connection.js`. Extracting this to a module-level constant would make the file easier to read and update.
 
 ---
 
-## SOLID Principle Assessment
+## SOLID Principle Compliance
 
-| Principle | Score (0–10) | Notes |
+| Principle | Score (0-10) | Notes |
 |-----------|-------------|-------|
-| **S — Single Responsibility** | 7 | Modules are generally well-scoped after the refactoring. `lib/connection.js` mixes a dead class with a live utility function. `lib/api.js` is large (509 lines) but cohesive. |
-| **O — Open/Closed** | 6 | The plugin system enables extension without modification. However, `revokeToken` hardcodes URLs (fails OCP when endpoints vary). The `BODY_GETTER_MAP` dispatch is well-designed. |
-| **L — Liskov Substitution** | 8 | No inheritance hierarchies to violate. `Record` does not subclass anything. |
-| **I — Interface Segregation** | 7 | The `Connection` prototype mixin exposes a large surface including private methods. No formal interface contracts. |
-| **D — Dependency Inversion** | 5 | Module-level singletons (`plugins`, `optionHelper`) prevent injection. `fdcstream.js` directly imports and instantiates `faye.Client` with no abstraction. |
+| S — Single Responsibility | 7 | After refactoring: `api.js` handles all API methods (one responsibility: Salesforce API). `auth.js` mixes getter/setter convenience methods with OAuth logic. |
+| O — Open/Closed | 6 | Plugin system is excellent OCP. But `authenticate()` uses if/else-if chains for grant types; a new grant type requires modifying this method. |
+| L — Liskov Substitution | 9 | No inheritance hierarchy issues. |
+| I — Interface Segregation | 8 | Modules export only what is needed. `util.js` is cohesive. Plugin system is clean. |
+| D — Dependency Inversion | 6 | `lib/api.js` directly requires `Record`, `multipart`, `FDCStream`, `util`, `errors`, and `constants` with no abstractions. All dependencies are concrete. Testable only via mock server. |
 
 ---
 
-## GRASP Principle Assessment
+## GRASP Principle Analysis
 
-| Principle | Score (0–10) | Notes |
-|-----------|-------------|-------|
-| **Information Expert** | 7 | `Record` correctly owns its field/change tracking. `optionhelper` correctly owns URL construction. |
-| **Creator** | 8 | `createConnection` and `createSObject` are clean factory functions. |
-| **Controller** | 7 | `Connection` acts as a facade controller. No bloated controller issues. |
-| **Low Coupling** | 6 | `_getOpts` is called pervasively across all API methods. OAuth object is passed as a plain object everywhere without validation. |
-| **High Cohesion** | 7 | Post-refactoring modules are fairly cohesive. The mixin approach distributes responsibility in a mostly principled way. |
-| **Polymorphism** | 7 | `BODY_GETTER_MAP` is a clean dispatch table replacing type-switch logic. |
-| **Pure Fabrication** | 8 | `util.js`, `optionhelper.js`, `errors.js` are appropriate service modules. |
-| **Indirection** | 6 | `optionHelper` and `errors` provide useful indirection. `faye` is not abstracted. |
-| **Protected Variations** | 6 | `MULTIPART_TYPES` list allows variation without code change. OAuth and URL patterns are fragile to Salesforce API format changes. |
+| Principle | Compliance | Notes |
+|-----------|-----------|-------|
+| Information Expert | Partial | `api.js` functions reach into `opts.sobject._getFullPayload()` rather than asking the sobject to serialize itself for a given operation. |
+| Creator | Good | `api.js` creates `Record` instances after API calls, which is appropriate. |
+| Controller | Good | `index.js` / Connection is a clean system facade. |
+| Low Coupling | Moderate | The `opts` bag creates implicit coupling between all api functions and the downstream http layer. |
+| High Cohesion | Good | After refactoring, most modules have clear single-domain focus. |
+| Polymorphism | Moderate | `getBody()` uses a lookup map (`BODY_GETTER_MAP`) which is a good approach, but `authenticate()` still uses if/else-if chains for grant types. |
+| Protected Variations | Moderate | Plugin system protects against extension coupling well. OAuth endpoint selection is not protected — four separate ternary expressions exist. |
 
 ---
 
 ## Detailed Findings by File
 
-| File | Lines | Issues |
-|------|-------|--------|
-| `index.js` | 77 | H1, H2 (by reference), M1, M2 |
-| `lib/api.js` | 509 | H1, M5, M6, M7, M12, L2, L8, L9, L11 |
-| `lib/auth.js` | 265 | H1, M4 |
-| `lib/http.js` | 195 | H1, M11 |
-| `lib/record.js` | 181 | M10, L2, L3, L4 |
-| `lib/connection.js` | 105 | H2 |
-| `lib/optionhelper.js` | 140 | M3 |
-| `lib/fdcstream.js` | 101 | M9, L10 |
-| `lib/plugin.js` | 52 | H1, H3 |
-| `lib/util.js` | 65 | M8 |
-| `lib/errors.js` | 13 | 0 (clean) |
-| `lib/constants.js` | 46 | L6 |
-| `lib/multipart.js` | 56 | H1 |
-| `test/record.js` | 360 | L3, L4 |
-| `test/plugin.js` | 103 | L4 |
-| `test/integration.js` | 68 | L5, L7, L12 |
-| `test/query.js` | 204 | L11 |
-| `test/crud.js` | 242 | 0 (clean) |
-| `test/connection.js` | 451 | 0 (clean) |
-| `test/errors.js` | 68 | 0 (clean) |
-| `test/mock/sfdc-rest-api.js` | 131 | 0 (clean) |
+### `lib/api.js` — 493 lines — 7 issues
+
+- **HS-1 (Primitive Obsession / Mutable Data):** Opts bag mutated throughout (all functions)
+- **HS-3 (Duplicated Code):** `opts.sobject ? opts.sobject.X : opts.X` pattern repeated 5 times (lines 38, 46, 176–177, 212–213, 223, 232, 241)
+- **MS-6 (Magic Path Strings):** `/sobjects/` prefix repeated 8 times in string concatenation
+- **MS-7 (Inconsistent Style):** 21 `let opts` vs. 5 `const opts`
+- **LS-3 (Deprecated Method):** `stream()` (lines 458–460) with no active deprecation signal
+- **LS-4 (Required Setup):** `_reset()` ceremony after every Record creation (lines 192–196, 314–316, 356–362)
+- **MS-6 note:** `this.loginUri.replace('/oauth2/token', '')` in `getVersions()` (line 75)
+
+### `lib/auth.js` — 263 lines — 5 issues
+
+- **MS-1 (Duplicated Code):** Environment selection ternary in `authenticate()`, `refreshToken()`, `revokeToken()`, `getAuthUri()` (lines 86–89, 113, 167, 219–221)
+- **MS-2 (Magic String):** SAML URN duplicated (lines 130, 182)
+- **MS-3 (Flag Argument):** `executeOnRefresh` flag (lines 96, 109, 163, 233, 239)
+- **MS-4 (Side Effects):** `Object.assign(opts.oauth, res)` mutates caller's OAuth object (lines 152, 207)
+- **MS-5 (Lazy Element):** 8 trivial getter/setter functions (lines 3–33)
+
+### `lib/http.js` — 189 lines — 2 issues
+
+- **HS-1 (Temporary Fields):** `opts._retryCount` and `opts._refreshResult` injected into opts bag (lines 174–178)
+- **HS-2 (Indecent Exposure):** `sobject._reset` duck-typed check at lines 82–83
+
+### `lib/record.js` — 177 lines — 2 issues
+
+- **HS-2 (Indecent Exposure):** Underscore-prefixed internals (`_fields`, `_changed`, `_previous`, `_getFullPayload`, `_getChangedPayload`, `_reset`) are not protected from external access and are actively used from `lib/api.js` and `lib/http.js`
+- **LS-4 (Required Setup):** `_reset()` must be called after construction for "clean" records; no factory method guards this
+
+### `lib/fdcstream.js` — 99 lines — 1 issue
+
+- **MS-6 note:** `opts.apiVersion.substring(1)` at line 47 to strip the `v` prefix from the version string. This is a fragile string operation that assumes the format `"v63.0"`. A helper function or a numeric version constant would be more robust.
+
+### `lib/optionhelper.js` — 106 lines — 1 issue
+
+- **LS-1 (What Comments):** Multiple comments describe the obvious (lines 33, 47, 50–51, 55–56, 60–61, 75, 80)
+
+### `test/integration.js` — 68 lines — 2 issues
+
+- **Dead Code:** Commented-out credentials object (lines 57–66)
+- **TODO unresolved:** `// TODO: fix the creds` (line 18) — dead code in `if (creds == null)` branch
+
+### `test/record.js` — 361 lines — 1 issue
+
+- **HS-2 (Indecent Exposure amplified):** Direct mutation of `_changed`, `_previous`, `_fields` in test setup (lines 41, 48–55, 109–110, 117, 160, 217–218, 244–245, 332–348)
+
+### `test/connection.js` — 451 lines — 1 issue
+
+- **Duplicated Test Data:** The string `'ADFJSD234ADF765SFG55FD54S'` appears 58 times as a hardcoded fake client ID. A shared constant at the top of the file would improve readability.
 
 ---
 
 ## Impact Assessment
 
-- **Total Issues Found**: 28
-- **Breakdown by Severity**:
-  - High Severity Issues: 4 (H1–H4) — Architectural / CI-blocking impact
-  - Medium Severity Issues: 12 (M1–M12) — Design / maintainability impact
-  - Low Severity Issues: 12 (L1–L12) — Readability / minor correctness
-- **Breakdown by Category**:
-  - Lexical Abusers (naming, style): 7 issues
-  - Dispensables (dead code, duplication): 7 issues
-  - Object-Oriented Abusers: 4 issues
-  - Data Dealers: 2 issues
-  - Obfuscators: 3 issues
-  - Functional Abusers: 1 issue
-  - Bloaters: 1 issue
-  - Couplers: 1 issue
-  - SOLID violations contributing: DIP (H3), SRP (H2), OCP (M4), ISP (M2, M6)
-- **Risk Factors**: H1 is a CI blocker; H4 is a latent runtime crash risk; L11 is a silent test failure
+**Total Issues Found:** 14 distinct smells (plus amplifications in tests)
+- High Severity: 3 (architectural / encapsulation impact)
+- Medium Severity: 7 (design / maintainability impact)
+- Low Severity: 4 (readability / minor maintenance)
+
+**Breakdown by Category:**
+- Bloaters: 1 (HS-1 / Primitive Obsession)
+- Dispensables: 4 (HS-3, MS-5, LS-2, LS-3)
+- Data Dealers: 2 (HS-1 Mutable Data, MS-4 Side Effects)
+- Change Preventers: 2 (MS-1 Duplicated Code, HS-3 Duplicated Code)
+- Object-Oriented Abusers: 1 (HS-2 Indecent Exposure)
+- Lexical Abusers: 2 (MS-2 Magic String, MS-6 Magic Paths, MS-7 Inconsistent Style)
+- Functional Abusers: 1 (MS-3 Flag Argument)
+- Other: 1 (LS-1 What Comment, LS-4 Required Setup)
+
+**SOLID Violations:** 4 (SRP partial in auth.js, OCP in authenticate grant types, DIP throughout api.js, ISP minor)
+**GRASP Violations:** 3 (Information Expert partial, Low Coupling via opts bag, Protected Variations for env endpoints)
 
 ---
 
 ## Recommendations and Refactoring Roadmap
 
-### Phase 1 — Immediate (CI Unblocking, Zero Risk)
-1. **Fix H1 (Quote Style)**: Run `npx eslint . --fix` to auto-correct all 182 quote violations in seconds. Add a pre-commit hook (e.g., `husky` + `lint-staged`) to prevent future drift.
-2. **Fix L11 (Test Bug)**: Remove the stray `'` from the `expected` URL in `test/query.js` line 33. This likely reveals a test assertion that has been silently inactive.
+### Phase 1 — Quick Wins (Low Risk, High Clarity)
 
-### Phase 2 — Short-term (Correctness Fixes, Low Risk)
-3. **Fix M4 (Hardcoded Revoke URLs)**: Add `revokeUri`/`testRevokeUri` to constants and `defaultOptions`. Correctness fix for enterprise Salesforce deployments with custom domains.
-4. **Fix M8 (isObject null bug)**: Add `null` exclusion to `isObject` in `lib/util.js`. Add a test.
-5. **Fix M9 (self = this)**: Replace with arrow functions in `fdcstream.js`. Trivial, no behavioral change.
-6. **Fix L5 (logout)**: Fix the integration test teardown to not call a non-existent method.
-7. **Fix L3, L4, L7, L12**: Remove dead test code (no-op `beforeEach`, empty test bodies, commented-out block, TODO comment).
+1. **Extract `SAML_ASSERTION_TYPE` constant** in `auth.js` or `constants.js` (30 minutes, zero risk, resolves MS-2)
+2. **Replace `let opts` with `const opts`** in all non-reassigning declarations in `api.js` and `auth.js` (15 minutes, zero risk, resolves MS-7)
+3. **Remove what-comments** in `optionhelper.js` (10 minutes, resolves LS-1)
+4. **Add `process.emitWarning` to `stream()`** at call time (5 minutes, resolves LS-3)
+5. **Extract `resolveId(opts)` and `resolveType(opts)` helpers** in `api.js` (30 minutes, resolves HS-3)
+6. **Introduce `Record.fromResponse(data)` static factory** for post-fetch Record creation (20 minutes, resolves LS-4)
+7. **Clean up `test/integration.js`** dead code and TODO (10 minutes)
+8. **Extract `FAKE_CLIENT_ID` constant** in `test/connection.js` (5 minutes)
 
-### Phase 3 — Medium-term (Design Improvements, Moderate Effort)
-8. **Fix H2 (Dead Connection Class)**: Decide on the architectural direction and consolidate. Complete the ES6 class migration or remove the dead class.
-9. **Fix M3 (OptionHelper Constructor)**: Remove the unnecessary factory wrapper. Simplifies the module and removes the surprising invocation pattern.
-10. **Fix M5 (URL duplication)**: Extract the shared URL construction/body serialization pattern in `api.js`.
-11. **Fix M6 + M7 (Exposed internals)**: Remove `_queryHandler` from exports; remove or deprecate `stream`.
-12. **Fix L6 (Stale API versions)**: Update `package.json` `sfdx.api` to current Salesforce version; remove `'v54.0'` fallback.
+### Phase 2 — Design Improvements (Medium Risk)
 
-### Phase 4 — Long-term (Architecture)
-13. **Fix H4 (OAuth Primitive Obsession)**: Create an `OAuth` value class or enforce `validateOAuth()` at the start of every API method via `_getOpts`.
-14. **Fix H3 (Plugin singleton)**: Refactor plugin registry to be injectable or per-connection.
-15. **Fix M1 + M2 (Connection ES6 class)**: Migrate `Connection` to a proper ES6 class with `#private` fields.
+9. **Introduce endpoint-selection helpers on Connection** (`_loginEndpoint()`, `_authEndpoint()`, `_revokeEndpoint()`) to deduplicate the environment ternary in `auth.js` (1 hour, resolves MS-1)
+10. **Replace `executeOnRefresh` flag with explicit intent** — rename or split `_resolveWithRefresh` (2 hours, resolves MS-3)
+11. **Return new OAuth object from `authenticate()`/`refreshToken()`** instead of mutating the passed-in object (1 hour, resolves MS-4; coordinate with callers)
+12. **Add path-building helpers** to reduce `/sobjects/` string repetition in `api.js` (1 hour, resolves MS-6)
 
----
+### Phase 3 — Architectural Improvements (Higher Risk, Higher Value)
 
-## Prevention Strategies
-
-1. **Add `lint` as a pre-commit hook** using `husky` or similar to prevent future quote-style drift. The current CI workflow runs tests on push but apparently does not gate on lint separately.
-2. **Enforce `no-unused-vars` strictly for `lib/`**: The lint config disables `no-unused-vars` only for `examples/`; enable it strictly for `lib/` to catch future dead exports like the `Connection` class.
-3. **Adopt `it.todo()` convention**: Replace empty placeholder test bodies with `it.todo(description)` (supported natively by Mocha) to make gaps explicit without vacuous passes.
-4. **Add JSDoc `@public`/`@private` annotations**: Document the public API surface explicitly so that internal methods exposed by the mixin are clearly marked as not part of the stable API.
-5. **Add TypeScript type definitions or JSDoc `@typedef`** for the OAuth object shape — this would catch H4 at development time without requiring a runtime change.
+13. **Add public serialization methods to Record** (`toFullPayload()`, `toChangedPayload()`, public `reset()`) that replace the underscore-prefixed methods accessed from `api.js` and `http.js` (2 hours, resolves HS-2 partially)
+14. **Introduce typed request building** to replace the mutable opts bag pattern — either a builder class or a factory function that returns an immutable request spec (4–8 hours, resolves HS-1)
+15. **Evaluate and remove trivial getters/setters** in `auth.js` (1 hour, resolves MS-5)
 
 ---
 
 ## Appendix: Detection Methodology
 
-**Tools used**: Static analysis via manual file reading (Read tool), pattern searches (Grep), ESLint execution (Bash), line-count analysis.
+**Tools Used:** File system traversal (ls, glob), line counting (wc -l), grep pattern matching, manual code reading of all 22 source files
 
-**No code was modified** during this analysis. All findings are based on static examination of source files as they exist.
+**Files Analyzed:**
+- `index.js`, `lib/api.js`, `lib/auth.js`, `lib/http.js`, `lib/connection.js`, `lib/record.js`, `lib/fdcstream.js`, `lib/optionhelper.js`, `lib/multipart.js`, `lib/util.js`, `lib/constants.js`, `lib/errors.js`, `lib/plugin.js`
+- `test/connection.js`, `test/crud.js`, `test/record.js`, `test/query.js`, `test/errors.js`, `test/integration.js`, `test/plugin.js`, `test/util.js`, `test/mock/sfdc-rest-api.js`
+- `package.json`
 
-**Excluded from analysis**: `examples/` (linting suppressed by project config), `node_modules/`, `coverage/`, `docs/`.
+**Files Excluded from Primary Analysis:** `examples/` (snippet-style scripts, not production code), `node_modules/`
 
-**Reference catalog**: Jerzyk (2022) — https://luzkan.github.io/smells/, Fowler (1999/2018) "Refactoring", Martin (2008) "Clean Code".
+**Reference Catalog:** Marcel Jerzyk (2022) "Code Smells: A Comprehensive Online Catalog and Taxonomy"; Martin Fowler (1999/2018) "Refactoring"; Robert C. Martin (2008) "Clean Code"
 
 ---
 
-*Analysis performed: 2026-03-26. Analyzer: claude-sonnet-4-6.*
+*Executive summary available in `code-smell-detector-summary.md`*
+*Machine-readable data available in `code-smell-detector-data.json`*
