@@ -1,0 +1,51 @@
+{
+  "total_recommendations": 15,
+  "priority_matrix": [
+    {"item": "R15 — Replace opts._retryCount sentinel with closure parameter", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R16 — Remove side-effect from _apiAuthRequest", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R17 — Encapsulate mock server state in a class", "impact": "H", "complexity": "M", "risk": "L"},
+    {"item": "R18 — Extract _resubscribeAll() helper in cometd.js", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R19 — Extract _blobGetter factory in api.js", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R20 — Extract private _get() helper for GET methods in api.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R21 — Replace onRefresh callback with Promise-returning hook", "impact": "M", "complexity": "M", "risk": "M"},
+    {"item": "R22 — Name WebSocket frame constants in cometd-server.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R23 — Name WS_RESPONSE_TIMEOUT_MS constant in cometd.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R24 — Standardize optional-argument pattern in fdcstream.js", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R25 — Add JSDoc typedef shapes for opts bags", "impact": "M", "complexity": "M", "risk": "L"},
+    {"item": "R26 — Remove section-divider comments in api.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R27 — Fix getLastRequest naming and semantics in mock", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R28 — Eliminate dead code and redundant constructs", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R29 — Extract _parseWsFrames / _buildWsFrame helpers in test mock", "impact": "L", "complexity": "M", "risk": "L"}
+  ],
+  "risk_distribution": {
+    "low": 14,
+    "medium": 1,
+    "high": 0
+  },
+  "category_distribution": {
+    "Composing Methods": 7,
+    "Moving Features Between Objects": 1,
+    "Organizing Data": 2,
+    "Simplifying Method Calls": 4,
+    "Simplifying Conditional Expressions": 0,
+    "Dealing with Generalization": 0,
+    "Moving Features": 1
+  },
+  "implementation_sequence": [
+    {"order": 1, "item": "R26 — Remove section-divider comments in api.js", "rationale": "Purely cosmetic change with zero risk establishes a clean baseline before touching logic."},
+    {"order": 2, "item": "R28 — Eliminate dead code and redundant constructs", "rationale": "Removing dead code and redundant Promise.resolve wrapping reduces noise and clarifies the code before structural changes."},
+    {"order": 3, "item": "R23 — Name WS_RESPONSE_TIMEOUT_MS constant in cometd.js", "rationale": "One-line constant addition isolated to cometd.js; no logic change, no risk."},
+    {"order": 4, "item": "R24 — Standardize optional-argument pattern in fdcstream.js", "rationale": "Isolated style fix to a single file; completes before touching any shared modules."},
+    {"order": 5, "item": "R15 — Replace opts._retryCount sentinel with closure parameter", "rationale": "High-impact correctness fix; do early so all subsequent work builds on a clean retry path. No breaking API change."},
+    {"order": 6, "item": "R16 — Remove side-effect from _apiAuthRequest", "rationale": "Follows R15 naturally since both touch the http/auth request pipeline; eliminates the overlapping credential-write after the retry path is clean."},
+    {"order": 7, "item": "R18 — Extract _resubscribeAll() helper in cometd.js", "rationale": "Isolated to cometd.js; do now while adding error emission to catch blocks in the same commit."},
+    {"order": 8, "item": "R19 — Extract _blobGetter factory in api.js", "rationale": "Isolated refactor within api.js; reduces duplication before the GET helper is added."},
+    {"order": 9, "item": "R20 — Extract private _get() helper for GET methods in api.js", "rationale": "Builds on R19; both touch api.js, so doing them in sequence minimises context switching."},
+    {"order": 10, "item": "R22 — Name WebSocket frame constants in cometd-server.js", "rationale": "Prerequisite for R29; naming constants first makes the extracted helpers readable from the start."},
+    {"order": 11, "item": "R29 — Extract _parseWsFrames / _buildWsFrame helpers in test mock", "rationale": "Depends on R22 constants being named; extract helpers after constants are in place."},
+    {"order": 12, "item": "R17 — Encapsulate mock server state in a class (includes R27)", "rationale": "Larger test-infrastructure refactor; done after individual mock file fixes (R22) are stable. Subsumes R27 fix for getLastRequest semantics."},
+    {"order": 13, "item": "R27 — Fix getLastRequest naming and semantics in mock", "rationale": "Subsumed by R17; if R17 is implemented, R27 is completed as part of it. Otherwise apply here as a standalone fix."},
+    {"order": 14, "item": "R25 — Add JSDoc typedef shapes for opts bags", "rationale": "Documentation pass best done near the end once all structural changes are settled, so typedefs accurately reflect the final shapes."},
+    {"order": 15, "item": "R21 — Replace onRefresh callback with Promise-returning hook", "rationale": "Only breaking-change recommendation; saved for last so it can be coordinated with a semver bump and changelog entry independently of all other changes."}
+  ]
+}

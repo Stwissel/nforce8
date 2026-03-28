@@ -1,0 +1,89 @@
+{
+  "grade": "B",
+  "total_issues": 32,
+  "severity_distribution": {
+    "high": 2,
+    "medium": 17,
+    "low": 13
+  },
+  "category_distribution": {
+    "Dispensables": 9,
+    "Lexical Abusers": 7,
+    "Data Dealers": 3,
+    "Object-Oriented Abusers": 3,
+    "Functional Abusers": 2,
+    "Change Preventers": 2,
+    "Couplers": 1,
+    "Bloaters": 1,
+    "Other": 4
+  },
+  "solid_compliance": {
+    "SRP": 7,
+    "OCP": 8,
+    "LSP": 10,
+    "ISP": 7,
+    "DIP": 8
+  },
+  "top_issues": [
+    {
+      "file": "test/mock/sfdc-rest-api.js",
+      "issue": "Module-level mutable arrays (serverStack, requestStack) shared across all test files — global mutable state breaks test isolation",
+      "severity": "high",
+      "category": "Data Dealers"
+    },
+    {
+      "file": "lib/http.js",
+      "issue": "opts._retryCount written onto the caller's options object as a hidden mutation sentinel to prevent auto-refresh retry loops",
+      "severity": "high",
+      "category": "Data Dealers"
+    },
+    {
+      "file": "lib/auth.js",
+      "issue": "onRefresh hook uses Node.js error-first callback convention (err, cb) while the entire library is Promise-based — mixed async paradigms",
+      "severity": "medium",
+      "category": "Change Preventers"
+    },
+    {
+      "file": "lib/http.js",
+      "issue": "_apiAuthRequest has a hidden side-effect: it writes to this.oauth in single-user mode, while transport methods should not manage credential state",
+      "severity": "medium",
+      "category": "Functional Abusers"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "getAttachmentBody, getDocumentBody, and getContentVersionData are structurally identical — six-line duplication across three functions",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "Repeated opts.resource / opts.method / return this._apiRequest(opts) pattern in six consecutive GET methods",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/cometd.js",
+      "issue": "_rehandshake and _scheduleReconnect both contain identical subscription re-subscription loops",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "opts parameter bag has no defined shape — 20+ properties with no JSDoc typedef, making the API contract implicit",
+      "severity": "medium",
+      "category": "Data Dealers"
+    },
+    {
+      "file": "test/mock/cometd-server.js",
+      "issue": "WebSocket frame constants (0x80, 0x7f, 0x0f, 126, 127, 0x81, 0x88) appear as unexplained magic numbers without named constants",
+      "severity": "medium",
+      "category": "Lexical Abusers"
+    },
+    {
+      "file": "lib/cometd.js",
+      "issue": "_connectLoop handles six distinct responsibilities: sending connect, parsing responses, detecting failure codes, dispatching data messages, applying intervals, and error recovery",
+      "severity": "medium",
+      "category": "Change Preventers"
+    }
+  ]
+}
