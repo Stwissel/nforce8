@@ -312,4 +312,13 @@ describe('index', function () {
     });
   });
 
+  describe('#single-mode OAuth guard', function () {
+    it('should throw when calling API without authenticating in single mode', function () {
+      let org = makeOrg({ mode: 'single' });
+      (function () {
+        org.query({ query: 'SELECT Id FROM Account' });
+      }.should.throw(/single-user mode.*no OAuth token/));
+    });
+  });
+
 });
