@@ -84,6 +84,21 @@ describe('api-mock-errors', () => {
       result.should.be.instanceOf(AbortSignal);
       result.should.not.equal(controller.signal);
     });
+
+    it('should return the original signal when timeout is 0', () => {
+      const controller = new AbortController();
+      const result = buildSignal(controller.signal, 0);
+      result.should.equal(controller.signal);
+    });
+
+    it('should abort combined signal when the user controller aborts', () => {
+      const controller = new AbortController();
+      const combined = buildSignal(controller.signal, 60000);
+      combined.should.be.instanceOf(AbortSignal);
+      combined.aborted.should.be.false();
+      controller.abort();
+      combined.aborted.should.be.true();
+    });
   });
 
   describe('closed socket', function () {
