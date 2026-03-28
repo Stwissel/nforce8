@@ -2,6 +2,7 @@ const nforce = require('../');
 const api = require('./mock/sfdc-rest-api');
 const should = require('should');
 const errors = require('../lib/errors');
+const { _buildSignal: buildSignal } = require('../lib/http');
 
 const org = nforce.createConnection(api.getClient());
 const oauth = api.getOAuth();
@@ -55,6 +56,33 @@ describe('api-mock-errors', () => {
       err.message.should.equal('Unexpected empty response');
       should.exist(err.type);
       err.type.should.equal('empty-response');
+    });
+  });
+
+  describe('buildSignal', () => {
+    it('should return undefined when no timeout is set', () => {
+      const result = buildSignal(undefined, undefined);
+      should.not.exist(result);
+    });
+
+    it('should return existing signal when no timeout is set', () => {
+      const controller = new AbortController();
+      const result = buildSignal(controller.signal, undefined);
+      result.should.equal(controller.signal);
+    });
+
+    it('should return a timeout signal when no existing signal', () => {
+      const result = buildSignal(undefined, 5000);
+      should.exist(result);
+      result.should.be.instanceOf(AbortSignal);
+    });
+
+    it('should combine existing signal with timeout signal', () => {
+      const controller = new AbortController();
+      const result = buildSignal(controller.signal, 5000);
+      should.exist(result);
+      result.should.be.instanceOf(AbortSignal);
+      result.should.not.equal(controller.signal);
     });
   });
 
