@@ -2,6 +2,7 @@
 
 const should = require('should');
 const CometDClient = require('../lib/cometd');
+const FDCStream = require('../lib/fdcstream');
 const MockCometDServer = require('./mock/cometd-server');
 
 const PORT = 34444;
@@ -191,6 +192,44 @@ describe('CometD Client', function () {
     });
   });
 
+  describe('replay extension', () => {
+    it('should inject replay IDs on subscribe messages', async () => {
+      server.setSupportedTypes(['long-polling']);
+      const client = new CometDClient(server.endpoint);
+
+      // Add replay extension like fdcstream does
+      const replayMap = { '/topic/Replay': -2 };
+      client.addExtension({
+        incoming: (msg, cb) => cb(msg),
+        outgoing: (msg, cb) => {
+          if (msg.channel === '/meta/subscribe') {
+            msg.ext = msg.ext || {};
+            msg.ext.replay = replayMap;
+          }
+          cb(msg);
+        },
+      });
+
+      // Capture extension runs after replay extension
+      const capturedExt = [];
+      client.addExtension({
+        outgoing: (msg, cb) => {
+          if (msg.ext) capturedExt.push(msg.ext);
+          cb(msg);
+        },
+      });
+
+      await client.handshake();
+      await client.connect();
+      await client.subscribe('/topic/Replay', () => {});
+
+      capturedExt.some((ext) => ext.replay && ext.replay['/topic/Replay'] === -2)
+        .should.be.true();
+
+      await client.disconnect();
+    });
+  });
+
   describe('multiple subscriptions', () => {
     it('should deliver events to the correct subscription', async () => {
       server.setSupportedTypes(['long-polling']);
@@ -216,6 +255,90 @@ describe('CometD Client', function () {
       receivedB[0].val.should.equal('b1');
 
       await client.disconnect();
+    });
+  });
+});
+
+describe('FDCStream (fdcstream.js integration)', function () {
+  this.timeout(10000);
+
+  let server;
+
+  before(async () => {
+    server = new MockCometDServer(34445);
+    await server.start();
+  });
+
+  after(async () => {
+    await server.stop();
+  });
+
+  const mockOAuth = {
+    instance_url: 'http://localhost:34445',
+    access_token: 'mock-access-token',
+  };
+
+  describe('Client', () => {
+    it('should create a stream client and emit connect', (done) => {
+      server.setSupportedTypes(['long-polling']);
+      const client = new FDCStream.Client({
+        oauth: mockOAuth,
+        apiVersion: 'v58.0',
+      });
+
+      client.on('connect', () => {
+        should.exist(client._cometd);
+        client.disconnect();
+        done();
+      });
+    });
+  });
+
+  describe('Subscription', () => {
+    it('should subscribe and receive events', (done) => {
+      server.setSupportedTypes(['long-polling']);
+      const client = new FDCStream.Client({
+        oauth: mockOAuth,
+        apiVersion: 'v58.0',
+      });
+
+      client.on('connect', () => {
+        const sub = client.subscribe({ topic: '/topic/FDCTest' });
+
+        sub.on('data', (data) => {
+          data.msg.should.equal('hello');
+          sub.cancel();
+          client.disconnect();
+          done();
+        });
+
+        sub.on('connect', () => {
+          server.pushEvent('/topic/FDCTest', { msg: 'hello' });
+        });
+      });
+    });
+
+    it('should support replay IDs', (done) => {
+      server.setSupportedTypes(['long-polling']);
+      const client = new FDCStream.Client({
+        oauth: mockOAuth,
+        apiVersion: 'v58.0',
+      });
+
+      client.on('connect', () => {
+        const sub = client.subscribe({
+          topic: '/topic/ReplayTest',
+          replayId: -2,
+        });
+
+        sub.on('connect', () => {
+          // Replay ID was registered
+          client._replayFromMap['/topic/ReplayTest'].should.equal(-2);
+          sub.cancel();
+          client.disconnect();
+          done();
+        });
+      });
     });
   });
 });
