@@ -65,7 +65,7 @@ const createSObject = (type, fields) => {
 };
 
 const version = require('./package.json').version;
-const API_VERSION = require('./package.json').sfdx.api;
+const API_VERSION = CONST.API;
 module.exports = {
   util: util,
   plugin: plugin,
