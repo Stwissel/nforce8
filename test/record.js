@@ -199,7 +199,7 @@ describe('lib/record', function () {
   });
 
   describe('#getUrl', function () {
-    it('should let me get the id', function () {
+    it('should let me get the url', function () {
       let acc = new Record({
         attributes: {
           type: 'Account',
