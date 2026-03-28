@@ -49,6 +49,15 @@ const Connection = function (opts) {
 // Mix in prototype methods from domain modules
 Object.assign(Connection.prototype, httpMethods, authMethods, apiMethods);
 
+// Deprecation shim for renamed method
+Connection.prototype.getBody = function (data) {
+  process.emitWarning(
+    'getBody() is deprecated. Use getBinaryContent() instead.',
+    { code: 'NFORCE8_DEPRECATED_GETBODY', type: 'DeprecationWarning' }
+  );
+  return this.getBinaryContent(data);
+};
+
 /*****************************
  * exports
  *****************************/
