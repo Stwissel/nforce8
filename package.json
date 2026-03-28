@@ -38,7 +38,6 @@
   },
   "main": "index.js",
   "dependencies": {
-    "faye": "^1.4.1",
     "mime-types": "^3.0.2"
   },
   "devDependencies": {
