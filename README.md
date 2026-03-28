@@ -2,7 +2,12 @@
 
 A promise-based Node.js REST API wrapper for Salesforce, a modernized fork of Kevin O'Hara's [nforce](https://github.com/kevinohara80/nforce) library.
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/719bc9f8685247fc8fdac704e596ee67)](https://www.codacy.com/app/Stwissel/nforce8?utm_source=github.com&utm_medium=referral&utm_content=Stwissel/nforce8&utm_campaign=Badge_Grade)
+[![Codacy Badge](https://api.codacy.com/project/badge/Coverage/719bc9f8685247fc8fdac704e596ee67)](https://www.codacy.com/app/Stwissel/nforce8?utm_source=github.com&utm_medium=referral&utm_content=Stwissel/nforce8&utm_campaign=Badge_Coverage)
 [![npm version](https://badge.fury.io/js/nforce8.svg)](https://badge.fury.io/js/nforce8)
+[![Known Vulnerabilities](https://snyk.io/test/github/Stwissel/nforce8/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Stwissel/nforce8?targetFile=package.json)
+[![Snyk security (npm package)](https://snyk.io/test/npm/nforce8/badge.svg)](https://security.snyk.io/package/npm/nforce8)
+[![Coverage Status](https://coveralls.io/repos/github/Stwissel/nforce8/badge.svg?branch=master)](https://coveralls.io/github/Stwissel/nforce8?branch=master)
 [![CI](https://github.com/Stwissel/nforce8/actions/workflows/codecheck.yml/badge.svg)](https://github.com/Stwissel/nforce8/actions/workflows/codecheck.yml)
 
 ## Requirements
