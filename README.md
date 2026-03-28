@@ -12,7 +12,7 @@ A promise-based Node.js REST API wrapper for Salesforce, a modernized fork of Ke
 
 ## Requirements
 
-- **Node.js >= 22.0** (uses built-in `fetch` and `WebSocket`)
+- **Node.js >= 22.4.0** — uses built-in `fetch` and a stable built-in `WebSocket` (Node’s global `WebSocket` was experimental in 22.0–22.3)
 
 ## Features
 
@@ -159,7 +159,7 @@ API versions **must** be fully-qualified strings like `'v62.0'`. Bare numbers (`
 - Promise-only API, no callback support
 - API version must be fully-qualified (`'v45.0'`, not `42` or `'42'`)
 - Streaming subscriptions require the full topic path (e.g. `/topic/MyTopic`)
-- Requires Node.js >= 22.0
+- Requires Node.js >= 22.4.0 (stable built-in `WebSocket`; experimental in 22.0–22.3)
 - Built-in CometD client replaces the faye dependency
 
 ## Documentation
