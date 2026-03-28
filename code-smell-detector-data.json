@@ -1,110 +1,85 @@
 {
-  "grade": "B",
-  "total_issues": 14,
+  "grade": "C",
+  "total_issues": 30,
   "severity_distribution": {
     "high": 3,
-    "medium": 7,
-    "low": 4
+    "medium": 13,
+    "low": 14
   },
   "category_distribution": {
-    "Bloaters": 1,
-    "Change Preventers": 2,
-    "Data Dealers": 2,
-    "Dispensables": 4,
-    "Functional Abusers": 1,
-    "Lexical Abusers": 3,
-    "Object-Oriented Abusers": 1
+    "Dispensables": 9,
+    "Lexical Abusers": 8,
+    "Object-Oriented Abusers": 4,
+    "Bloaters": 4,
+    "Couplers": 3,
+    "Data Dealers": 2
   },
   "solid_compliance": {
-    "SRP": 7,
-    "OCP": 6,
+    "SRP": 6,
+    "OCP": 7,
     "LSP": 9,
-    "ISP": 8,
-    "DIP": 6
+    "ISP": 5,
+    "DIP": 7
   },
   "top_issues": [
     {
-      "file": "lib/api.js, lib/auth.js, lib/http.js, lib/optionhelper.js",
-      "issue": "Primitive Obsession — every API call passes, mutates, and threads a plain untyped opts object through the entire call chain. Retry-state fields (_retryCount, _refreshResult) are injected into this same bag at runtime, adding Temporary Field smell.",
-      "severity": "high",
-      "category": "Bloaters"
-    },
-    {
-      "file": "lib/record.js, lib/api.js, lib/http.js, test/record.js",
-      "issue": "Indecent Exposure — underscore-prefixed 'private' Record methods (_getFullPayload, _getChangedPayload, _reset) are called directly from api.js and http.js. Tests directly read and mutate _fields, _changed, _previous, making Record's internal representation impossible to change without updating multiple files.",
+      "file": "lib/auth.js",
+      "issue": "Indecent Exposure: private methods (_authEndpoint, _loginEndpoint, _revokeEndpoint, _notifyAndResolve, _resolveOAuth) exported onto public Connection prototype",
       "severity": "high",
       "category": "Object-Oriented Abusers"
     },
     {
       "file": "lib/api.js",
-      "issue": "Duplicated Code — the ternary 'opts.sobject ? opts.sobject.X : opts.X' pattern for resolving IDs and types appears five times with three inconsistent resolution methods (sobject.getId(), sobject.getId(), util.findId(sobject)).",
+      "issue": "Primitive Obsession / Data Clump: pervasive mutable opts-bag pattern carries credentials, HTTP verbs, payloads, retry state, and feature flags through every layer",
       "severity": "high",
-      "category": "Change Preventers"
+      "category": "Bloaters"
     },
     {
-      "file": "lib/auth.js",
-      "issue": "Duplicated Code — sandbox/production endpoint selection ternary or if/else appears in four separate places: authenticate(), refreshToken(), revokeToken(), and getAuthUri(). A new environment type requires changes in all four locations.",
+      "file": "lib/api.js",
+      "issue": "God Module: 503 lines, 30 exports combining 8 unrelated concerns (CRUD, metadata, blob, query, search, URL access, Apex REST, streaming)",
+      "severity": "high",
+      "category": "Bloaters"
+    },
+    {
+      "file": "lib/http.js",
+      "issue": "Duplicated Code: identical AbortSignal.timeout/merge block repeated in _apiAuthRequest (lines 100-106) and _apiRequest (lines 139-145)",
       "severity": "medium",
-      "category": "Change Preventers"
+      "category": "Dispensables"
     },
     {
-      "file": "lib/auth.js",
-      "issue": "Magic String — the SAML assertion type URN 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser' is duplicated in authenticate() (line 130) and refreshToken() (line 182). A typo in either location would cause silent authentication failure.",
+      "file": "lib/api.js",
+      "issue": "Duplicated Code: multipart-or-JSON body selection logic duplicated in insert() and update()",
       "severity": "medium",
-      "category": "Lexical Abusers"
+      "category": "Dispensables"
     },
     {
-      "file": "lib/auth.js",
-      "issue": "Flag Argument — the boolean executeOnRefresh is threaded through opts to control whether _resolveWithRefresh fires the onRefresh callback. Callers cannot determine from the call site whether the callback will be invoked.",
-      "severity": "medium",
-      "category": "Functional Abusers"
-    },
-    {
-      "file": "lib/auth.js",
-      "issue": "Side Effects — authenticate() and refreshToken() silently mutate the caller's OAuth object via Object.assign(opts.oauth, res). In multi-user mode this can corrupt shared OAuth references.",
+      "file": "lib/http.js",
+      "issue": "Dead Write / Status Variable: opts._refreshResult assigned but never read; opts._retryCount embeds flow-control state in the data bag",
       "severity": "medium",
       "category": "Data Dealers"
     },
     {
       "file": "lib/auth.js",
-      "issue": "Lazy Element — eight trivial one-line getter/setter functions (getOAuth, setOAuth, getUsername, setUsername, getPassword, setPassword, getSecurityToken, setSecurityToken) add 30 lines of boilerplate with no transformation, validation, or encapsulation.",
+      "issue": "Lazy Element: _resolveOAuth is a one-line Promise.resolve wrapper with no added behaviour, exported publicly and tested directly",
       "severity": "medium",
       "category": "Dispensables"
     },
     {
-      "file": "lib/api.js",
-      "issue": "Magic Path Strings — the prefix '/sobjects/' is repeated 8 times in string concatenation. lib/api.js:75 also uses loginUri.replace('/oauth2/token','') to derive the Salesforce base URL — a fragile assumption about stored URI structure.",
+      "file": "lib/multipart.js",
+      "issue": "Feature Envy: multipart() reaches into Record for type, fileName, payload, and body instead of Record owning its multipart representation",
       "severity": "medium",
-      "category": "Lexical Abusers"
+      "category": "Couplers"
     },
     {
-      "file": "lib/api.js",
-      "issue": "Inconsistent Style — 21 occurrences of 'let opts' vs 5 occurrences of 'const opts' in api.js, even when opts is never reassigned. Prevents linter enforcement of accidental reassignment.",
+      "file": "test/record.js",
+      "issue": "Inappropriate Intimacy: tests access _fields, _changed, _previous, and _getPayload directly, coupling tests to private implementation details",
       "severity": "medium",
-      "category": "Lexical Abusers"
+      "category": "Couplers"
     },
     {
-      "file": "lib/optionhelper.js",
-      "issue": "What Comment — seven inline comments in getApiRequestOptions() describe what the next line does (e.g., '// set accept headers', '// process qs') rather than explaining any non-obvious business rule.",
-      "severity": "low",
-      "category": "Data Dealers"
-    },
-    {
-      "file": "lib/api.js",
-      "issue": "Speculative Generality — _urlRequest(data, method) is a private helper that exists solely to back four one-line public methods (getUrl, putUrl, postUrl, deleteUrl). The indirection is borderline given the current simplicity of the private function body.",
-      "severity": "low",
-      "category": "Dispensables"
-    },
-    {
-      "file": "lib/api.js",
-      "issue": "Dead Code (Deprecated Method) — stream() is marked @deprecated but emits no runtime warning and specifies no concrete removal version, making it unlikely to ever be removed.",
-      "severity": "low",
-      "category": "Dispensables"
-    },
-    {
-      "file": "lib/api.js, lib/record.js",
-      "issue": "Required Setup Code — new Record() always marks all constructor-supplied fields as changed. Every caller that constructs a Record from an API response must explicitly call _reset() afterward. Missing this call causes false positives in hasChanged(). No factory method guards this invariant.",
-      "severity": "low",
+      "file": "test/connection.js",
+      "issue": "Required Setup Code: nforce.createConnection() with full boilerplate repeated verbatim in 17 individual test cases",
+      "severity": "medium",
       "category": "Dispensables"
     }
   ]
