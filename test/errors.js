@@ -1,6 +1,7 @@
 const nforce = require('../');
 const api = require('./mock/sfdc-rest-api');
 const should = require('should');
+const errors = require('../lib/errors');
 
 const org = nforce.createConnection(api.getClient());
 const oauth = api.getOAuth();
@@ -44,6 +45,16 @@ describe('api-mock-errors', () => {
           err.type.should.equal('invalid-json');
         })
         .finally(() => done());
+    });
+  });
+
+  describe('empty response errors', () => {
+    it('should set err.type to empty-response', () => {
+      const err = errors.emptyResponse();
+      should.exist(err);
+      err.message.should.equal('Unexpected empty response');
+      should.exist(err.type);
+      err.type.should.equal('empty-response');
     });
   });
 
