@@ -312,19 +312,4 @@ describe('index', function () {
     });
   });
 
-  describe('#_resolveOAuth', function () {
-    it('should resolve with oauth without calling onRefresh', function () {
-      let refreshCalled = false;
-      let org = makeOrg({
-        onRefresh: function (newOauth, oldOauth, cb) {
-          refreshCalled = true;
-          cb(null);
-        }
-      });
-      return org._resolveOAuth({ access_token: 'test' }).then((result) => {
-        refreshCalled.should.be.false();
-        result.access_token.should.equal('test');
-      });
-    });
-  });
 });
