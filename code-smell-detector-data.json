@@ -1,100 +1,111 @@
 {
   "grade": "B",
-  "total_issues": 28,
+  "total_issues": 14,
   "severity_distribution": {
-    "high": 4,
-    "medium": 12,
-    "low": 12
+    "high": 3,
+    "medium": 7,
+    "low": 4
   },
   "category_distribution": {
-    "Lexical Abusers": 7,
-    "Dispensables": 7,
-    "Object-Oriented Abusers": 4,
-    "Obfuscators": 3,
-    "Data Dealers": 2,
     "Bloaters": 1,
+    "Change Preventers": 2,
+    "Data Dealers": 2,
+    "Dispensables": 4,
     "Functional Abusers": 1,
-    "Couplers": 1
+    "Lexical Abusers": 3,
+    "Object-Oriented Abusers": 1
   },
   "solid_compliance": {
     "SRP": 7,
     "OCP": 6,
-    "LSP": 8,
-    "ISP": 7,
-    "DIP": 5
+    "LSP": 9,
+    "ISP": 8,
+    "DIP": 6
   },
   "top_issues": [
     {
-      "file": "index.js, lib/api.js, lib/auth.js, lib/http.js, lib/multipart.js, lib/plugin.js",
-      "issue": "182 active ESLint errors — all source files from the recent refactoring use double-quoted strings, violating the project's single-quote rule. CI-blocking.",
+      "file": "lib/api.js, lib/auth.js, lib/http.js, lib/optionhelper.js",
+      "issue": "Primitive Obsession — every API call passes, mutates, and threads a plain untyped opts object through the entire call chain. Retry-state fields (_retryCount, _refreshResult) are injected into this same bag at runtime, adding Temporary Field smell.",
       "severity": "high",
+      "category": "Bloaters"
+    },
+    {
+      "file": "lib/record.js, lib/api.js, lib/http.js, test/record.js",
+      "issue": "Indecent Exposure — underscore-prefixed 'private' Record methods (_getFullPayload, _getChangedPayload, _reset) are called directly from api.js and http.js. Tests directly read and mutate _fields, _changed, _previous, making Record's internal representation impossible to change without updating multiple files.",
+      "severity": "high",
+      "category": "Object-Oriented Abusers"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "Duplicated Code — the ternary 'opts.sobject ? opts.sobject.X : opts.X' pattern for resolving IDs and types appears five times with three inconsistent resolution methods (sobject.getId(), sobject.getId(), util.findId(sobject)).",
+      "severity": "high",
+      "category": "Change Preventers"
+    },
+    {
+      "file": "lib/auth.js",
+      "issue": "Duplicated Code — sandbox/production endpoint selection ternary or if/else appears in four separate places: authenticate(), refreshToken(), revokeToken(), and getAuthUri(). A new environment type requires changes in all four locations.",
+      "severity": "medium",
+      "category": "Change Preventers"
+    },
+    {
+      "file": "lib/auth.js",
+      "issue": "Magic String — the SAML assertion type URN 'urn:oasis:names:tc:SAML:2.0:profiles:SSO:browser' is duplicated in authenticate() (line 130) and refreshToken() (line 182). A typo in either location would cause silent authentication failure.",
+      "severity": "medium",
       "category": "Lexical Abusers"
     },
     {
-      "file": "lib/connection.js",
-      "issue": "Dead Connection ES6 class that is never imported or used. The runtime Connection is still a constructor function in index.js. Refactoring artifact causing confusion.",
-      "severity": "high",
-      "category": "Dispensables"
+      "file": "lib/auth.js",
+      "issue": "Flag Argument — the boolean executeOnRefresh is threaded through opts to control whether _resolveWithRefresh fires the onRefresh callback. Callers cannot determine from the call site whether the callback will be invoked.",
+      "severity": "medium",
+      "category": "Functional Abusers"
     },
     {
-      "file": "lib/plugin.js",
-      "issue": "Module-level singleton plugin registry (const plugins = Object.create(null)). Tests are not isolated; state leaks between test runs and between tenants in serverless environments.",
-      "severity": "high",
-      "category": "Data Dealers"
-    },
-    {
-      "file": "lib/auth.js, lib/api.js, lib/http.js, lib/fdcstream.js, lib/optionhelper.js",
-      "issue": "OAuth object is a plain untyped object throughout the codebase. No validation at call sites. Missing fields produce obscure TypeError crashes at runtime.",
-      "severity": "high",
+      "file": "lib/auth.js",
+      "issue": "Side Effects — authenticate() and refreshToken() silently mutate the caller's OAuth object via Object.assign(opts.oauth, res). In multi-user mode this can corrupt shared OAuth references.",
+      "severity": "medium",
       "category": "Data Dealers"
     },
     {
       "file": "lib/auth.js",
-      "issue": "revokeToken hardcodes Salesforce OAuth revoke endpoint URLs instead of using the configurable loginUri/testLoginUri connection options. Breaks enterprise custom-domain deployments.",
+      "issue": "Lazy Element — eight trivial one-line getter/setter functions (getOAuth, setOAuth, getUsername, setUsername, getPassword, setPassword, getSecurityToken, setSecurityToken) add 30 lines of boilerplate with no transformation, validation, or encapsulation.",
+      "severity": "medium",
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "Magic Path Strings — the prefix '/sobjects/' is repeated 8 times in string concatenation. lib/api.js:75 also uses loginUri.replace('/oauth2/token','') to derive the Salesforce base URL — a fragile assumption about stored URI structure.",
+      "severity": "medium",
+      "category": "Lexical Abusers"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "Inconsistent Style — 21 occurrences of 'let opts' vs 5 occurrences of 'const opts' in api.js, even when opts is never reassigned. Prevents linter enforcement of accidental reassignment.",
       "severity": "medium",
       "category": "Lexical Abusers"
     },
     {
       "file": "lib/optionhelper.js",
-      "issue": "OptionHelper is an unnecessary constructor-factory wrapper around two pure functions. No state, no defaults. Callers must invoke require('./optionhelper')() which is surprising.",
-      "severity": "medium",
-      "category": "Dispensables"
+      "issue": "What Comment — seven inline comments in getApiRequestOptions() describe what the next line does (e.g., '// set accept headers', '// process qs') rather than explaining any non-obvious business rule.",
+      "severity": "low",
+      "category": "Data Dealers"
     },
     {
       "file": "lib/api.js",
-      "issue": "getUrl/putUrl/postUrl/deleteUrl repeat the same opts.oauth.instance_url + requireForwardSlash(opts.url) URL construction pattern four times. Body serialization also duplicated.",
-      "severity": "medium",
-      "category": "Dispensables"
-    },
-    {
-      "file": "lib/api.js",
-      "issue": "_queryHandler is included in module.exports despite being a private implementation method. Unnecessarily expands the public API surface.",
-      "severity": "medium",
-      "category": "Object-Oriented Abusers"
-    },
-    {
-      "file": "lib/util.js",
-      "issue": "isObject(null) returns true because typeof null === 'object' in JavaScript. Latent correctness bug for any caller passing null.",
-      "severity": "medium",
-      "category": "Functional Abusers"
-    },
-    {
-      "file": "lib/fdcstream.js",
-      "issue": "let self = this anti-pattern used in two ES6 class constructors. Arrow functions are the modern idiomatic replacement for Node.js 22 targets.",
-      "severity": "medium",
-      "category": "Object-Oriented Abusers"
-    },
-    {
-      "file": "test/query.js",
-      "issue": "Template literal at line 33 contains a stray single-quote character, making the expected URL value incorrect. The url assertion silently never fires due to promise error handler swallowing it.",
+      "issue": "Speculative Generality — _urlRequest(data, method) is a private helper that exists solely to back four one-line public methods (getUrl, putUrl, postUrl, deleteUrl). The indirection is borderline given the current simplicity of the private function body.",
       "severity": "low",
       "category": "Dispensables"
     },
     {
-      "file": "test/integration.js",
-      "issue": "Teardown calls client.logout() which does not exist on Connection. Would throw TypeError if the integration test ever ran with real credentials.",
+      "file": "lib/api.js",
+      "issue": "Dead Code (Deprecated Method) — stream() is marked @deprecated but emits no runtime warning and specifies no concrete removal version, making it unlikely to ever be removed.",
       "severity": "low",
-      "category": "Lexical Abusers"
+      "category": "Dispensables"
+    },
+    {
+      "file": "lib/api.js, lib/record.js",
+      "issue": "Required Setup Code — new Record() always marks all constructor-supplied fields as changed. Every caller that constructs a Record from an API response must explicitly call _reset() afterward. Missing this call causes false positives in hasChanged(). No factory method guards this invariant.",
+      "severity": "low",
+      "category": "Dispensables"
     }
   ]
 }

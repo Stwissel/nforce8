@@ -123,7 +123,7 @@ describe('lib/record', function () {
         Flag__c: false,
         Score__c: 0
       });
-      acc._reset();
+      acc.reset();
       acc.set('Flag__c', false);
       acc.set('Score__c', 0);
       acc.hasChanged().should.equal(false);
@@ -134,7 +134,7 @@ describe('lib/record', function () {
         attributes: { type: 'Account' },
         Score__c: 0
       });
-      acc._reset();
+      acc.reset();
       acc.set('Score__c', 1);
       acc.set('Score__c', 2);
       acc.previous('score__c').should.equal(0);
@@ -288,7 +288,7 @@ describe('lib/record', function () {
 
     it('should return falsy previous value 0', function () {
       let acc = new Record({ Name: 'Test', Score: 5 });
-      acc._reset();
+      acc.reset();
       acc.set('Score', 10);
       acc.previous('Score').should.equal(5);
       acc.set('Score', 0);
@@ -297,14 +297,14 @@ describe('lib/record', function () {
 
     it('should return falsy previous value empty string', function () {
       let acc = new Record({ Name: 'Test', Label: 'original' });
-      acc._reset();
+      acc.reset();
       acc.set('Label', '');
       acc.previous('Label').should.equal('original');
     });
 
     it('should return falsy previous value null', function () {
       let acc = new Record({ Name: 'Test', Ref: 'something' });
-      acc._reset();
+      acc.reset();
       acc.set('Ref', null);
       acc.previous('Ref').should.equal('something');
     });
@@ -317,12 +317,30 @@ describe('lib/record', function () {
     });
   });
 
-  describe('#_reset', function () {
-    it('should reset the cache when calling _reset', function () {
+  describe('#reset', function () {
+    it('should reset the cache when calling reset', function () {
       let acc = new Record(accData);
       Object.keys(acc.changed()).length.should.equal(2);
-      acc._reset();
+      acc.reset();
       Object.keys(acc.changed()).length.should.equal(0);
+    });
+  });
+
+  describe('.fromResponse', function () {
+    it('should create a Record with clean change-tracking', function () {
+      let rec = Record.fromResponse(accData);
+      rec.should.be.instanceOf(Record);
+      rec.get('name').should.equal('Test Account');
+      rec.hasChanged().should.be.false();
+      Object.keys(rec.changed()).length.should.equal(0);
+    });
+
+    it('should track changes made after construction', function () {
+      let rec = Record.fromResponse(accData);
+      rec.set('Name', 'Updated');
+      rec.hasChanged().should.be.true();
+      rec.hasChanged('name').should.be.true();
+      rec.get('name').should.equal('Updated');
     });
   });
 

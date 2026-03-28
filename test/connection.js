@@ -1,13 +1,16 @@
 let nforce = require('../');
 let should = require('should');
 
+const FAKE_CLIENT_ID = 'ADFJSD234ADF765SFG55FD54S';
+const FAKE_REDIRECT_URI = 'http://localhost:3000/oauth/_callback';
+
 describe('index', function () {
   describe('#createConnection', function () {
     it('should throw on no clientId', function () {
       (function () {
         nforce.createConnection({
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback'
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI
         });
       }.should.throw('invalid or missing clientId'));
     });
@@ -15,8 +18,8 @@ describe('index', function () {
     it('should throw on no redirectUri', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S'
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID
         });
       }.should.throw('invalid or missing redirectUri'));
     });
@@ -24,9 +27,9 @@ describe('index', function () {
     it('should not throw on id, secret, and redirectUri', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback'
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI
         });
       }.should.not.throw());
     });
@@ -34,9 +37,9 @@ describe('index', function () {
     it('should not accept the number v24 for apiVersion', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           apiVersion: 24
         });
       }.should.throw());
@@ -45,9 +48,9 @@ describe('index', function () {
     it('should not accept the string 24 for apiVersion', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           apiVersion: '24'
         });
       }.should.throw());
@@ -56,9 +59,9 @@ describe('index', function () {
     it('should not throw for apiVersion v45.0', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           apiVersion: 'v45.0'
         });
       }.should.not.throw());
@@ -67,9 +70,9 @@ describe('index', function () {
     it('should not accept bare major-only apiVersion v45', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           apiVersion: 'v45'
         });
       }.should.throw());
@@ -79,8 +82,8 @@ describe('index', function () {
       (function () {
         nforce.createConnection({
           clientId: '   ',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback'
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI
         });
       }.should.throw('invalid or missing clientId'));
     });
@@ -88,8 +91,8 @@ describe('index', function () {
     it('should reject non-http(s) redirectUri', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
           redirectUri: 'ftp://localhost:3000/oauth/_callback'
         });
       }.should.throw('invalid or missing redirectUri'));
@@ -97,9 +100,9 @@ describe('index', function () {
 
     it('should normalize environment and mode to lowercase after validation', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'SandBox',
         mode: 'SINGLE'
       });
@@ -110,9 +113,9 @@ describe('index', function () {
     it('should accept production for environment', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           environment: 'production'
         });
       }.should.not.throw());
@@ -121,9 +124,9 @@ describe('index', function () {
     it('should accept sandbox for environment', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           environment: 'sandbox'
         });
       }.should.not.throw());
@@ -132,9 +135,9 @@ describe('index', function () {
     it('should not accept playground for environment', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           environment: 'playground'
         });
       }.should.throw());
@@ -143,9 +146,9 @@ describe('index', function () {
     it('should throw on invalid timeout', function () {
       (function () {
         nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           timeout: '5555'
         });
       }.should.throw('timeout must be a number'));
@@ -154,9 +157,9 @@ describe('index', function () {
     it('should accept number for timeout', function () {
       (function () {
         let org = nforce.createConnection({
-          clientId: 'ADFJSD234ADF765SFG55FD54S',
-          clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-          redirectUri: 'http://localhost:3000/oauth/_callback',
+          clientId: FAKE_CLIENT_ID,
+          clientSecret: FAKE_CLIENT_ID,
+          redirectUri: FAKE_REDIRECT_URI,
           timeout: 5555
         });
 
@@ -207,13 +210,13 @@ describe('index', function () {
       obj.getId().should.equal('asalesforceid');
     });
 
-    it('should clear the cache after calling _reset', function () {
+    it('should clear the cache after calling reset', function () {
       let obj = nforce.createSObject('Test_Object__c', {
         Name: 'Test Me',
         Custom_Field__c: 'Blah',
         Id: 'asalesforceid'
       });
-      obj._reset();
+      obj.reset();
       obj._getPayload(true).should.not.have.keys('name', 'custom_field__c');
     });
   });
@@ -221,9 +224,9 @@ describe('index', function () {
   describe('#getAuthUri', function () {
     it('should return the correct authuri for production', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production'
       });
       let uri = org.getAuthUri();
@@ -232,9 +235,9 @@ describe('index', function () {
 
     it('should return the correct authuri for sandbox', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'sandbox'
       });
       let uri = org.getAuthUri();
@@ -243,9 +246,9 @@ describe('index', function () {
 
     it('should allow for setting display', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production'
       });
       let uri = org.getAuthUri({ display: 'popup' });
@@ -254,9 +257,9 @@ describe('index', function () {
 
     it('should allow for setting immediate', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production'
       });
       let uri = org.getAuthUri({ immediate: true });
@@ -265,9 +268,9 @@ describe('index', function () {
 
     it('should allow for setting scope', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production'
       });
       let uri = org.getAuthUri({ scope: ['visualforce', 'web'] });
@@ -276,9 +279,9 @@ describe('index', function () {
 
     it('should allow for setting state', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production'
       });
       let uri = org.getAuthUri({ state: 'something' });
@@ -287,9 +290,9 @@ describe('index', function () {
 
     it('should allow for custom auth endpoint', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         authEndpoint: 'http://foo.com',
         testAuthEndpoint: 'http://test.foo.com',
         environment: 'production'
@@ -300,9 +303,9 @@ describe('index', function () {
 
     it('should allow for custom test auth endpoint', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         authEndpoint: 'http://foo.com',
         testAuthEndpoint: 'http://test.foo.com',
         environment: 'sandbox'
@@ -315,9 +318,9 @@ describe('index', function () {
   describe('#getIdentity', function () {
     it('should reject when oauth is missing', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production',
         mode: 'multi'
       });
@@ -333,9 +336,9 @@ describe('index', function () {
 
     it('should reject when oauth has access_token but no identity URL', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production',
         mode: 'multi'
       });
@@ -355,9 +358,9 @@ describe('index', function () {
   describe('#refreshToken', function () {
     it('should reject when oauth has no refresh_token or assertion', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         environment: 'production'
       });
       return org.refreshToken({ oauth: {} }).then(
@@ -371,25 +374,24 @@ describe('index', function () {
     });
   });
 
-  describe('#_resolveWithRefresh', function () {
+  describe('#_notifyAndResolve', function () {
     it('should resolve with oauth when no onRefresh is set', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback'
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI
       });
-      let opts = { oauth: { access_token: 'test123' }, executeOnRefresh: true };
-      return org._resolveWithRefresh(opts, {}).then((result) => {
+      return org._notifyAndResolve({ access_token: 'test123' }, {}).then((result) => {
         result.access_token.should.equal('test123');
       });
     });
 
-    it('should call onRefresh callback when set and executeOnRefresh is true', function () {
+    it('should call onRefresh callback when onRefresh is set', function () {
       let refreshCalled = false;
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         onRefresh: function (newOauth, oldOauth, cb) {
           refreshCalled = true;
           newOauth.access_token.should.equal('new_token');
@@ -397,12 +399,9 @@ describe('index', function () {
           cb(null);
         }
       });
-      let opts = {
-        oauth: { access_token: 'new_token' },
-        executeOnRefresh: true
-      };
+      let newOauth = { access_token: 'new_token' };
       let oldOauth = { access_token: 'old_token' };
-      return org._resolveWithRefresh(opts, oldOauth).then((result) => {
+      return org._notifyAndResolve(newOauth, oldOauth).then((result) => {
         refreshCalled.should.be.true();
         result.access_token.should.equal('new_token');
       });
@@ -410,39 +409,33 @@ describe('index', function () {
 
     it('should reject when onRefresh callback returns an error', function () {
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         onRefresh: function (newOauth, oldOauth, cb) {
           cb(new Error('refresh failed'));
         }
       });
-      let opts = {
-        oauth: { access_token: 'test' },
-        executeOnRefresh: true
-      };
-      return org._resolveWithRefresh(opts, {}).then(
+      return org._notifyAndResolve({ access_token: 'test' }, {}).then(
         () => { throw new Error('should have rejected'); },
         (err) => { err.message.should.equal('refresh failed'); }
       );
     });
+  });
 
-    it('should skip onRefresh when executeOnRefresh is false', function () {
+  describe('#_resolveOAuth', function () {
+    it('should resolve with oauth without calling onRefresh', function () {
       let refreshCalled = false;
       let org = nforce.createConnection({
-        clientId: 'ADFJSD234ADF765SFG55FD54S',
-        clientSecret: 'ADFJSD234ADF765SFG55FD54S',
-        redirectUri: 'http://localhost:3000/oauth/_callback',
+        clientId: FAKE_CLIENT_ID,
+        clientSecret: FAKE_CLIENT_ID,
+        redirectUri: FAKE_REDIRECT_URI,
         onRefresh: function (newOauth, oldOauth, cb) {
           refreshCalled = true;
           cb(null);
         }
       });
-      let opts = {
-        oauth: { access_token: 'test' },
-        executeOnRefresh: false
-      };
-      return org._resolveWithRefresh(opts, {}).then((result) => {
+      return org._resolveOAuth({ access_token: 'test' }).then((result) => {
         refreshCalled.should.be.false();
         result.access_token.should.equal('test');
       });
