@@ -9,10 +9,12 @@ const httpMethods = require('./lib/http');
 const authMethods = require('./lib/auth');
 const apiMethods = require('./lib/api');
 
-/*****************************
- * connection object
- *****************************/
-
+/**
+ * Salesforce REST API connection. Holds configuration, credentials, and exposes
+ * all API methods (auth, CRUD, query, streaming) on its prototype.
+ * @param {object} opts - Connection options: clientId, clientSecret, redirectUri,
+ *   environment, mode, apiVersion, autoRefresh, onRefresh, timeout, plugins, etc.
+ */
 const Connection = function (opts) {
   opts = Object.assign({}, CONST.defaultOptions, opts || {});
 
@@ -49,12 +51,32 @@ const Connection = function (opts) {
 // Mix in prototype methods from domain modules
 Object.assign(Connection.prototype, httpMethods, authMethods, apiMethods);
 
+// Deprecation shim for renamed method
+Connection.prototype.getBody = function (data) {
+  process.emitWarning(
+    'getBody() is deprecated. Use getBinaryContent() instead.',
+    { code: 'NFORCE8_DEPRECATED_GETBODY', type: 'DeprecationWarning' }
+  );
+  return this.getBinaryContent(data);
+};
+
 /*****************************
  * exports
  *****************************/
 
+/**
+ * Create a new Salesforce connection instance.
+ * @param {object} opts - Connection options (see Connection constructor).
+ * @returns {Connection}
+ */
 const createConnection = (opts) => new Connection(opts);
 
+/**
+ * Create a new SObject Record instance.
+ * @param {string} type - SObject type name (e.g. 'Account', 'ContentVersion').
+ * @param {object} [fields] - Initial field values.
+ * @returns {Record}
+ */
 const createSObject = (type, fields) => {
   const data = fields || {};
   data.attributes = {
@@ -65,7 +87,7 @@ const createSObject = (type, fields) => {
 };
 
 const version = require('./package.json').version;
-const API_VERSION = require('./package.json').sfdx.api;
+const API_VERSION = CONST.API;
 module.exports = {
   util: util,
   plugin: plugin,

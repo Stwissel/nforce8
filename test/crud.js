@@ -234,6 +234,37 @@ describe('api-mock-crud', () => {
     });
   });
 
+  describe('#getBinaryContent', () => {
+    it('should reject on invalid type', () => {
+      return org
+        .getBinaryContent({ sobject: nforce.createSObject('Account'), oauth: oauth })
+        .then(() => { throw new Error('should have rejected'); })
+        .catch((err) => {
+          err.message.should.match(/invalid type/);
+        });
+    });
+  });
+
+  describe('#getBody deprecation shim', () => {
+    it('should delegate to getBinaryContent and emit a warning', (done) => {
+      let warned = false;
+      const listener = (warning) => {
+        if (warning.code === 'NFORCE8_DEPRECATED_GETBODY') {
+          warned = true;
+        }
+      };
+      process.on('warning', listener);
+      org
+        .getBody({ sobject: nforce.createSObject('Account'), oauth: oauth })
+        .catch(() => {})
+        .finally(() => {
+          process.removeListener('warning', listener);
+          warned.should.be.true();
+          done();
+        });
+    });
+  });
+
   // reset the lastRequest
   afterEach(() => api.reset());
 
