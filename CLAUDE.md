@@ -24,7 +24,7 @@ There is no build step — this is a plain Node.js module with no transpilation.
 
 ### Supporting Modules
 
-- **`lib/fdcstream.js`** — Faye-based Streaming API client (EventEmitter). `Subscription` and `Client` classes with replay and auto-reconnection support.
+- **`lib/fdcstream.js`** — CometD-based Streaming API client (EventEmitter). `Subscription` and `Client` classes with replay and auto-reconnection support.
 - **`lib/optionhelper.js`** — Builds API request options (URIs, headers, multipart, gzip).
 - **`lib/multipart.js`** — Multipart form-data builder for file uploads (ContentVersion, Attachment).
 - **`lib/util.js`** — Type checking, response validation, OAuth validation, ID extraction.
