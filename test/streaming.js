@@ -7,6 +7,17 @@ const MockCometDServer = require('./mock/cometd-server');
 
 const PORT = 34444;
 
+/** Poll a condition function until it returns true, with short intervals. */
+async function waitFor(conditionFn, { timeout = 5000, interval = 10 } = {}) {
+  const start = Date.now();
+  while (!conditionFn()) {
+    if (Date.now() - start > timeout) {
+      throw new Error('waitFor timed out');
+    }
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+}
+
 describe('CometD Client', function () {
   this.timeout(10000);
 
@@ -96,8 +107,7 @@ describe('CometD Client', function () {
       // Push an event from the mock server
       server.pushEvent('/topic/TestTopic', { id: '001', name: 'Test' });
 
-      // Wait for the event to be delivered
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => received.length > 0);
 
       received.length.should.equal(1);
       received[0].id.should.equal('001');
@@ -120,7 +130,8 @@ describe('CometD Client', function () {
       await sub.cancel();
 
       server.pushEvent('/topic/UnsubTest', { id: '002' });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Brief wait to confirm no event arrives (no condition to poll for)
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       received.length.should.equal(0);
 
@@ -244,10 +255,10 @@ describe('CometD Client', function () {
       await client.subscribe('/topic/B', (data) => receivedB.push(data));
 
       server.pushEvent('/topic/A', { val: 'a1' });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => receivedA.length > 0);
 
       server.pushEvent('/topic/B', { val: 'b1' });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => receivedB.length > 0);
 
       receivedA.length.should.equal(1);
       receivedA[0].val.should.equal('a1');

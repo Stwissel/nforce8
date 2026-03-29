@@ -151,8 +151,8 @@ API versions **must** be fully-qualified strings like `'v62.0'`. Bare numbers (`
 
 ## Single vs Multi User Mode
 
-- **Multi mode** (default): pass `oauth` with each API call
-- **Single mode**: OAuth is cached on the connection after `authenticate()`, no need to pass it
+- **Multi-User Mode** (default): pass `oauth` with each API call
+- **Single-User Mode**: OAuth is cached on the connection after `authenticate()`, no need to pass it
 
 ## Important Differences from nforce
 
