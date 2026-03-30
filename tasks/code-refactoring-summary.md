@@ -1,163 +1,145 @@
-# Code Refactoring Summary — nforce8 (Phase 3)
+# Code Refactoring Summary — nforce8
 
-**Generated:** 2026-03-28
-**Phase:** 3 (post R01–R14)
-**Total Recommendations:** 15 (R15–R29)
-**Current Quality Grade:** B → Target: A-
+**Date**: 2026-03-30
+**Input**: code-smell-detector-report.md (30 smells)
+**Output**: 18 refactoring recommendations
 
 ---
 
-## High-Level Overview
+## Quick Reference
 
-Two prior refactoring phases have already decomposed the original monolithic `index.js`, eliminated trivial getter/setter delegation, replaced a boolean flag with explicit methods, and made OAuth token mutation non-mutating. The codebase is well-structured. Phase 3 focuses on the 32 remaining issues: two high-severity architectural problems, seventeen medium-severity design issues, and thirteen low-severity readability concerns.
-
-The 15 Phase 3 recommendations address:
-- **Architectural correctness:** Removing a hidden mutation sentinel on caller-owned objects and eliminating a transport-layer side-effect that secretly manages credential state.
-- **Test isolation:** Encapsulating shared mutable mock server state into an instantiable class.
-- **Duplication elimination:** Extracting repeated patterns in `api.js` (GET dispatch, blob getters) and `cometd.js` (re-subscribe loop).
-- **API contract clarity:** Migrating the sole callback-style hook to Promise-based convention and adding JSDoc typedefs for the `opts` parameter bag.
-- **Readability:** Naming magic WebSocket frame constants, standardizing optional-argument style, and removing dead/redundant code.
+| ID | Refactoring | File | Technique | Impact | Complexity | Risk | Phase |
+|----|------------|------|-----------|--------|------------|------|-------|
+| R01 | Add missing `require('crypto')` | `test/mock/cometd-server.js` | Introduce Foreign Method | H | L | None | 1 |
+| R02 | Fix silent error swallowing in tests | `test/crud.js`, `test/query.js` | Substitute Algorithm | H | L | L | 1 |
+| R03 | Fix `upsert()` to use `applyBody` | `lib/api.js` | Substitute Algorithm | H | L | L | 1 |
+| R04 | Fix spacing after `=` in api.js | `lib/api.js` | Style fix (ESLint) | L | L | None | 2 |
+| R05 | Extract `_resubscribeAll()` method | `lib/cometd.js` | Extract Method | M | L | L | 2 |
+| R06 | Remove redundant `Promise.resolve()` | `lib/auth.js` | Inline Temp | L | L | None | 2 |
+| R07 | Fix double-quote style in cometd.js | `lib/cometd.js` | Style fix (ESLint) | L | L | None | 2 |
+| R08 | Hoist inline `require` to top | `test/mock/cometd-server.js` | Inline Method analogue | L | L | None | 2 |
+| R09 | `onRefresh` support for Promises | `lib/auth.js` | Replace Parameter with Method Call | M | M | M | 4 |
+| R10 | Decompose `getAuthUri` conditionals | `lib/auth.js` | Substitute Algorithm + Extract Method | M | L | L | 3 |
+| R11 | Inline redundant `rec` variable | `index.js` | Inline Temp | L | L | None | 2 |
+| R12 | Named constant for ID field variants | `lib/util.js` | Replace Magic Number with Symbolic Constant | L | L | None | 3 |
+| R13 | Rename `checkHeaderCaseInsensitive` | `lib/util.js` | Rename Method | L | L | None | 3 |
+| R14 | Replace `let` with `const` | `lib/optionhelper.js` | Style fix | L | L | None | 2 |
+| R15 | Rename `getFullUri` → `buildUrl` | `lib/optionhelper.js` | Rename Method | L | L | L | 3 |
+| R16 | Propagate errors in `_connectLoop` | `lib/cometd.js` | Introduce Assertion | M | L | L | 3 |
+| R17 | Remove dead code in integration.js | `test/integration.js` | Dead code removal | L | L | None | 3 |
+| R18 | Convert mock to class-based instance | `test/mock/sfdc-rest-api.js` | Extract Class | M | M | M | 4 |
 
 ---
 
 ## Priority Matrix
 
-| Recommendation | Impact | Complexity | Risk |
-|----------------|--------|------------|------|
-| R15 — Replace `opts._retryCount` with closure parameter | H | L | L |
-| R16 — Remove side-effect from `_apiAuthRequest` | H | L | L |
-| R17 — Encapsulate mock server state in class | H | M | L |
-| R18 — Extract `_resubscribeAll()` in `cometd.js` | H | L | L |
-| R19 — Extract `_blobGetter` factory in `api.js` | H | L | L |
-| R20 — Extract `_get()` helper for GET methods | M | L | L |
-| R21 — Replace `onRefresh` callback with Promise hook | M | M | M |
-| R22 — Name WebSocket frame constants (test mock) | M | L | L |
-| R23 — Name `WS_RESPONSE_TIMEOUT_MS` in `cometd.js` | M | L | L |
-| R24 — Standardize default-param style in `fdcstream.js` | M | L | L |
-| R25 — Add JSDoc `@typedef` shapes for `opts` | M | M | L |
-| R26 — Remove section-divider comments in `api.js` | L | L | L |
-| R27 — Fix `getLastRequest` semantics in mock | M | L | L |
-| R28 — Eliminate dead code and redundant constructs | L | L | L |
-| R29 — Extract WS frame parse/build helpers | L | M | L |
+### High Impact
 
-**Impact:** H = High, M = Medium, L = Low
-**Complexity:** H = High, M = Medium, L = Low
-**Risk:** H = High, M = Medium, L = Low
+| Recommendation | Complexity | Risk |
+|----------------|------------|------|
+| R01 — Add `require('crypto')` | Low | None |
+| R02 — Fix test error swallowing | Low | Low |
+| R03 — Fix `upsert()` applyBody | Low | Low |
 
----
+### Medium Impact
 
-## Quick Reference: Refactoring Techniques Applied
+| Recommendation | Complexity | Risk |
+|----------------|------------|------|
+| R05 — Extract `_resubscribeAll()` | Low | Low |
+| R09 — `onRefresh` Promise support | Medium | Medium |
+| R10 — Decompose `getAuthUri` | Low | Low |
+| R16 — Propagate connect errors | Low | Low |
+| R18 — Class-based mock server | Medium | Medium |
 
-| Recommendation | Primary Technique(s) | Category |
-|----------------|---------------------|----------|
-| R15 | Remove Assignments to Parameters + Extract Method | Composing Methods |
-| R16 | Separate Query from Modifier | Simplifying Method Calls |
-| R17 | Extract Class | Moving Features Between Objects |
-| R18 | Extract Method | Composing Methods |
-| R19 | Extract Method + Parameterize Method | Composing Methods |
-| R20 | Extract Method + Parameterize Method | Composing Methods |
-| R21 | Replace Error Code with Exception (async variant) | Simplifying Method Calls |
-| R22 | Replace Magic Number with Symbolic Constant | Organizing Data |
-| R23 | Replace Magic Number with Symbolic Constant | Organizing Data |
-| R24 | Substitute Algorithm (style normalization) | Composing Methods |
-| R25 | Introduce Parameter Object (documentation tier) | Simplifying Method Calls |
-| R26 | Remove Comments (Extract Method not needed — names suffice) | Composing Methods |
-| R27 | Rename Method + Substitute Algorithm | Simplifying Method Calls |
-| R28 | Inline Temp + Remove Dead Code | Composing Methods |
-| R29 | Extract Method | Composing Methods |
+### Low Impact (Hygiene)
+
+| Recommendation | Complexity | Risk |
+|----------------|------------|------|
+| R04 — Spacing fix (ESLint auto) | Low | None |
+| R06 — Remove Promise.resolve() | Low | None |
+| R07 — Fix quote style (ESLint auto) | Low | None |
+| R08 — Hoist inline require | Low | None |
+| R11 — Inline rec temp | Low | None |
+| R12 — Named ID constant | Low | None |
+| R13 — Rename checkHeaderCaseInsensitive | Low | None |
+| R14 — let → const | Low | None |
+| R15 — Rename getFullUri | Low | Low |
+| R17 — Dead code cleanup | Low | None |
 
 ---
 
-## Key Benefits by Area
-
-### Correctness and Safety
-
-- **R15** eliminates a hidden mutation of the caller's `opts` object in the retry path. The `_retryCount` sentinel is invisible to callers and can silently suppress auto-refresh on reused opts objects. Replacing it with a closure parameter is both safer and more readable.
-- **R16** removes an overlapping credential-write side-effect from a transport method. The credential merge already happens in `auth.js`; the double-write in `_apiAuthRequest` creates confusion about which write "wins."
-- **R17** eliminates global mutable state shared across all test files in the mock server, ending the risk of test suite cross-contamination and making the test infrastructure predictable and deterministic.
-
-### Maintainability
-
-- **R18** ensures re-subscribe logic is defined in one place. Currently, any change to how topics are re-subscribed after reconnect requires identical edits in `_rehandshake` and `_scheduleReconnect`.
-- **R19** collapses three structurally identical six-line blob-getter functions into a single factory. Adding a new binary content type (e.g., a fourth SObject) requires one line instead of duplicating an entire function.
-- **R20** eliminates the three-line `opts.resource / opts.method / return _apiRequest` boilerplate repeated across six GET-only methods. A future change to all read paths (e.g., adding a tracing header) requires one edit instead of six.
-
-### API Contract Clarity
-
-- **R21** eliminates the single callback-style hook in an otherwise fully Promise-based library. After migration, `onRefresh` follows the same async contract as every other extensibility hook in the system.
-- **R25** adds JSDoc `@typedef` declarations that surface the `opts` parameter bag contract to IDE tooling and human readers, without requiring a TypeScript migration.
-
-### Readability
-
-- **R22 and R23** replace raw RFC 6455 byte constants and inline timeout values with named constants that document intent.
-- **R24** standardizes the three legacy `opts = opts || {}` guards in `fdcstream.js` to match the ES6 default parameter style used everywhere else.
-- **R26 and R28** remove redundant section-divider comments, dead code blocks, and unnecessary `Promise.resolve` wrappers.
-
----
-
-## Recommended Implementation Sequence
-
-Run `npm test` after each step to catch regressions immediately.
-
-```
-Step 1  R26  Remove section-divider comments in api.js            (cosmetic baseline)
-Step 2  R28  Eliminate dead code + redundant Promise.resolve       (clean up noise)
-Step 3  R23  Name WS_RESPONSE_TIMEOUT_MS in cometd.js             (one-line constant)
-Step 4  R24  Standardize default-param style in fdcstream.js       (isolated module)
-Step 5  R15  Replace opts._retryCount with closure parameter       (high-impact fix)
-Step 6  R16  Remove _apiAuthRequest side-effect                    (follows from R15)
-Step 7  R18  Extract _resubscribeAll() + emit error on catch       (isolated to cometd.js)
-Step 8  R19  Extract _blobGetter factory                           (isolated to api.js)
-Step 9  R20  Extract _get() helper for GET methods                 (api.js, after R19)
-Step 10 R22  Name WS frame constants in cometd-server.js           (prereq for R29)
-Step 11 R29  Extract _parseWsFrames / _buildWsFrame helpers        (build on R22)
-Step 12 R17  Encapsulate mock server in class (+ R27 fix included) (larger test refactor)
-Step 13 R25  Add JSDoc @typedef shapes for opts                    (documentation pass)
-Step 14 R21  Replace onRefresh callback with Promise hook          (breaking change last)
-```
-
-**R27** (fix `getLastRequest` semantics) is subsumed into **R17** and does not need a separate step.
-
----
-
-## Breaking Changes
-
-Only **R21** introduces a breaking change to the public API:
-
-| Change | Nature | Migration |
-|--------|--------|-----------|
-| `onRefresh` signature changes from `(newOauth, oldOauth, cb)` to `(newOauth, oldOauth) => Promise\|void` | Breaking | Callers must remove the `cb` parameter and return a Promise (or nothing) to signal errors. A backward-compat shim is available for the transition period (see full report R21). |
-
-All other recommendations are either internal implementation changes, test infrastructure changes, documentation additions, or cosmetic cleanups.
-
----
-
-## Files Affected
-
-| File | Recommendations |
-|------|----------------|
-| `lib/http.js` | R15, R16 |
-| `lib/auth.js` | R16, R21, R28 |
-| `lib/api.js` | R19, R20, R25, R26 |
-| `lib/cometd.js` | R18, R23 |
-| `lib/fdcstream.js` | R24 |
-| `lib/util.js` | R28 |
-| `test/mock/sfdc-rest-api.js` | R17, R27 |
-| `test/mock/cometd-server.js` | R22, R29 |
-| `test/integration.js` | R28 |
-| `test/crud.js` | R17 (consumer update) |
-| `test/query.js` | R17 (consumer update) |
-| `test/errors.js` | R17 (consumer update) |
-| `test/connection.js` | R17 (consumer update), R21 |
-
----
-
-## Risk Distribution Summary
+## Risk Distribution
 
 | Risk Level | Count | Recommendations |
-|------------|-------|----------------|
-| Low | 14 | R15, R16, R17, R18, R19, R20, R22, R23, R24, R25, R26, R27, R28, R29 |
-| Medium | 1 | R21 |
+|------------|-------|-----------------|
+| None | 10 | R01, R04, R06, R07, R08, R11, R12, R13, R14, R17 |
+| Low | 6 | R02, R03, R05, R10, R15, R16 |
+| Medium | 2 | R09, R18 |
 | High | 0 | — |
 
-The absence of high-risk recommendations reflects that Phase 1 and Phase 2 already addressed the most structurally disruptive changes. All Phase 3 recommendations are additive or confined to specific modules and can be implemented incrementally with continuous test verification.
+---
+
+## Implementation Sequence
+
+### Phase 1 — Critical (implement this week)
+
+1. **R01**: `const crypto = require('crypto');` at top of `test/mock/cometd-server.js` — prevents latent `TypeError` on WebSocket upgrade path
+2. **R03**: `upsert()` → use `applyBody` helper — silently incorrect for binary SObjects today
+3. **R02**: Replace 13 `.catch(should.not.exist).finally(done)` patterns — exposes any real assertion failures these were masking
+
+### Phase 2 — Quick Wins (implement this sprint)
+
+4. **R04** + **R07** + **R14**: Run `npx eslint --fix` on `lib/api.js`, `lib/cometd.js`, `lib/optionhelper.js` — zero-risk mechanical fixes
+5. **R05**: Extract `_resubscribeAll()` in `lib/cometd.js` — eliminates duplicate loop in two reconnect methods
+6. **R06**: Remove `Promise.resolve()` wrappers in `lib/auth.js` — two-line cleanup
+7. **R11**: Inline `rec` temp in `index.js` — one-line cleanup
+8. **R08**: Hoist inline `require('events')` in mock server — do alongside R01
+
+### Phase 3 — Design Tidying (next sprint)
+
+9. **R12**: Extract `ID_FIELD_VARIANTS` constant in `lib/util.js`
+10. **R13**: Rename `checkHeaderCaseInsensitive` → `headerContains`
+11. **R15**: Rename `getFullUri` → `buildUrl` in optionhelper + http
+12. **R10**: Refactor `getAuthUri` conditional blocks in `lib/auth.js`
+13. **R16**: Forward error to `transport:down` event in `lib/cometd.js`
+14. **R17**: Clean up dead code in `test/integration.js`
+
+### Phase 4 — Planned Improvements (next major version planning)
+
+15. **R09**: Accept Promise-returning `onRefresh` (backward-compatible, requires documentation update)
+16. **R18**: Convert `test/mock/sfdc-rest-api.js` to class-based instance (planned dedicated sprint)
+
+---
+
+## Key Benefits After Implementation
+
+| Benefit | From |
+|---------|------|
+| WebSocket test path no longer crashes | R01 |
+| Assertion failures surface correctly in 13 tests | R02 |
+| Binary SObject upsert produces correct multipart requests | R03 |
+| ESLint passes cleanly on all source files | R04, R07, R14 |
+| Reconnection logic has single source of truth | R05 |
+| `auth.js` is more idiomatic (no spurious Promise wrapping) | R06 |
+| Module dependency intent clear at file top | R08 |
+| `onRefresh` works with async/await handlers | R09 |
+| `getAuthUri` readable without counting 8 if-blocks | R10 |
+| Self-documenting ID variant handling | R12 |
+| Tests isolated from cross-contamination | R18 |
+
+---
+
+## Refactoring Technique Distribution
+
+| Category | Techniques Used | Count |
+|----------|----------------|-------|
+| Composing Methods | Extract Method (R05), Inline Temp (R06, R11), Substitute Algorithm (R02, R03, R07, R10) | 7 |
+| Simplifying Method Calls | Rename Method (R13, R15), Remove Parameter / Replace Parameter with Method Call (R09) | 3 |
+| Organizing Data | Replace Magic Number with Symbolic Constant (R12) | 1 |
+| Moving Features | Extract Class (R18) | 1 |
+| Simplifying Conditionals | Decompose Conditional / Extract Method (R10) | 1 |
+| Style / Mechanical | Formatting corrections (R04, R07, R08, R14), Dead code (R01, R17) | 5 |
+
+---
+
+*Full technical analysis with before/after code examples: `code-refactoring-report.md`*
