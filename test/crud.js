@@ -123,6 +123,33 @@ describe('api-mock-crud', () => {
         .catch((err) => should.not.exist(err))
         .finally(() => done());
     });
+
+    it('should send multipart/form-data for ContentVersion upsert', (done) => {
+      let upsertResponse = {
+        code: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: '068DEADBEEF', success: true })
+      };
+      let obj = nforce.createSObject('ContentVersion', {
+        Title: 'TestFile',
+        PathOnClient: 'test.txt'
+      });
+      obj.setAttachment('test.txt', Buffer.from('binary content'));
+      obj.setExternalId('My_Ext_Id__c', 'ext123');
+      api
+        .getGoodServerInstance(upsertResponse)
+        .then(() => org.upsert({ sobject: obj, oauth: oauth }))
+        .then((res) => {
+          should.exist(res);
+          res.id.should.equal('068DEADBEEF');
+          let ct = api.getLastRequest().headers['content-type'];
+          ct.should.startWith('multipart/form-data');
+          ct.should.containEql('boundary');
+          api.getLastRequest().method.should.equal('PATCH');
+        })
+        .then(() => done())
+        .catch((err) => done(err));
+    });
   });
 
   describe('#delete', () => {
