@@ -1,5 +1,6 @@
 const nforce = require('../');
-const api = require('./mock/sfdc-rest-api');
+const { MockSfdcApi } = require('./mock/sfdc-rest-api');
+const api = new MockSfdcApi(33335);
 const should = require('should');
 const errors = require('../lib/errors');
 const { _buildSignal: buildSignal } = require('../lib/http');
@@ -17,6 +18,8 @@ const jsonResponse = (body, code = 200) => {
 };
 
 describe('api-mock-errors', () => {
+  after((done) => api.stop(done));
+
   describe('invalid json errors', () => {
     it('should return invalid json error on bad json from authenticate', (done) => {
       let body = jsonResponse('{myproperty: \'invalid json\'$$$$');

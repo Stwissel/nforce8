@@ -2,8 +2,9 @@
 
 const nforce = require('../index');
 const should = require('should');
-const api = require('./mock/sfdc-rest-api');
-const port = process.env.PORT || 33333;
+const { MockSfdcApi } = require('./mock/sfdc-rest-api');
+const port = 33334;
+const api = new MockSfdcApi(port);
 
 const CONST = require('../lib/constants');
 const apiVersion = CONST.API;
