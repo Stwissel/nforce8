@@ -343,7 +343,7 @@ describe('index', function () {
     it('should accept a sync non-callback onRefresh function', function () {
       let refreshCalled = false;
       let org = makeOrg({
-        onRefresh: function (newOauth, oldOauth) {
+        onRefresh: function (newOauth) {
           refreshCalled = true;
           newOauth.access_token.should.equal('new_token');
         }
