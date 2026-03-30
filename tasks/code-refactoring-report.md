@@ -1,470 +1,411 @@
-# Code Refactoring Report — nforce8 (Phase 3)
+# Code Refactoring Report — nforce8
 
-**Generated:** 2026-03-28
-**Based on:** code-smell-detector-report.md (post Phase 1 & Phase 2 refactoring)
-**Scope:** `index.js`, `lib/` (all files), `test/` (all files)
-**Previous refactoring rounds:** R01–R14 (Phase 1 and Phase 2 complete)
+**Project**: nforce8 — Node.js REST API wrapper for Salesforce
+**Analysis Date**: 2026-03-30
+**Based On**: code-smell-detector-report.md (30 issues: 3 High, 11 Medium, 16 Low)
+**Refactoring Techniques Applied**: From the complete Fowler / refactoring.guru catalog
 
 ---
 
 ## Executive Summary
 
-Two prior refactoring phases (R01–R14) have substantially improved the nforce8 codebase: the original monolithic `index.js` was decomposed into focused domain modules, trivial inline getter/setter calls were eliminated from `auth.js` and `http.js`, the `executeOnRefresh` flag was replaced with explicit methods, and OAuth mutation logic was made non-mutating. The overall quality grade is now **B**.
+The nforce8 codebase receives a **B-grade** overall and is in genuinely good health. No god-objects, no deep inheritance chains, no callback hell in production code. The refactoring work falls into three clear buckets:
 
-This Phase 3 report addresses the **32 remaining issues** identified in the post-Phase-2 smell report. The issues split into three tiers:
+1. **Bug-Fix Refactorings (3)** — Issues that can cause silent test failures or incorrect runtime behaviour. Fix these first, unconditionally.
+2. **Design Refactorings (11)** — Smell-driven improvements that reduce future maintenance cost without changing the public API.
+3. **Style / Hygiene Refactorings (16)** — Mechanical, low-risk changes that improve readability and lint compliance.
 
-- **2 high-severity** architectural problems: global mutable test state and a hidden `opts._retryCount` sentinel mutation.
-- **17 medium-severity** design problems: duplicated GET/blob patterns, the `opts` property bag shape, magic numbers, mixed async paradigms, inconsistent error handling, and several SRP violations.
-- **13 low-severity** readability/maintenance issues: test indecent exposure, dead code, naming inconsistencies, redundant variable declarations, and silent error swallowing.
-
-The 15 recommendations below (R15–R29) are sequenced from highest-impact/lowest-risk to lowest-impact. Each recommendation carries a priority rating, complexity rating, and precise refactoring technique mapping from the Martin Fowler / refactoring.guru catalog.
+Total recommendations: **18** (some smells are resolved by the same refactoring; style items are grouped).
 
 ---
 
-## Recommendations Overview
-
-| ID | Title | Severity Basis | Priority | Complexity | Risk |
-|----|-------|----------------|----------|------------|------|
-| R15 | Replace `opts._retryCount` sentinel with closure parameter | High (H-2) | High | Low | Low |
-| R16 | Remove side-effect from `_apiAuthRequest` | High-adjacent (M-11) | High | Low | Low |
-| R17 | Encapsulate mock server state in a class | High (H-1) | High | Medium | Low |
-| R18 | Extract `_resubscribeAll()` helper in `cometd.js` | Medium (M-3) | High | Low | Low |
-| R19 | Extract blob getter factory (`_blobGetter`) in `api.js` | Medium (M-2) | High | Low | Low |
-| R20 | Extract private `_get()` helper for GET methods in `api.js` | Medium (M-1) | Medium | Low | Low |
-| R21 | Replace `onRefresh` callback with Promise-returning hook | Medium (M-14) | Medium | Medium | Medium |
-| R22 | Name WebSocket frame constants in `cometd-server.js` | Medium (M-5) | Medium | Low | Low |
-| R23 | Name `WS_RESPONSE_TIMEOUT_MS` constant in `cometd.js` | Medium (M-6) | Medium | Low | Low |
-| R24 | Standardize optional-argument pattern in `fdcstream.js` | Medium (M-7) | Medium | Low | Low |
-| R25 | Add JSDoc `@typedef` shapes for `opts` bags | Medium (M-4) | Medium | Medium | Low |
-| R26 | Remove section-divider comments in `api.js` | Medium (M-8) | Low | Low | Low |
-| R27 | Fix `getLastRequest` naming / semantics in mock | Medium (M-13) | Medium | Low | Low |
-| R28 | Eliminate dead code and redundant constructs | Low (L-3,L-5,M-15,L-9) | Low | Low | Low |
-| R29 | Extract `_parseWsFrames` / `_buildWsFrame` helpers in test mock | Low (L-12) | Low | Medium | Low |
+## Refactoring Recommendations
 
 ---
 
-## Detailed Refactoring Recommendations
+### R01 — Add Missing `require('crypto')` Import
 
----
+| Attribute | Value |
+|-----------|-------|
+| File | `test/mock/cometd-server.js` lines 201–206 |
+| Smell | Hidden Dependency / Latent Bug (High) |
+| Technique | **Introduce Foreign Method** (repair the missing module import) |
+| Priority | **Critical** |
+| Complexity | Trivial |
+| Risk | None |
 
-### R15 — Replace `opts._retryCount` Sentinel with Closure Parameter
+**Problem**
 
-**Addresses:** H-2 (Hidden Dependency / Temporal Coupling)
-**Priority:** High | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Remove Assignments to Parameters + Extract Method (Substitute Algorithm variant)
-**SOLID fix:** OCP, ISP, Principle of Least Surprise
+`cometd-server.js` calls `crypto.createHash('sha1')` but never imports the `crypto` module. In Node.js >= 22 the `globalThis.crypto` Web Crypto API exists, but `globalThis.crypto.createHash` does not. Any test path that triggers a WebSocket upgrade will throw `TypeError: crypto.createHash is not a function`.
 
-#### Problem
-
-`_apiRequest` in `lib/http.js` prevents infinite auto-refresh retry loops by writing `opts._retryCount = 1` onto the caller's options object — a hidden mutation side-effect. If a caller reuses the same opts object across calls (or inspects it after the call), they see an undocumented `_retryCount` property that was silently injected.
-
-```js
-// Current (problematic):
-.catch((err) => {
-  if (!opts._retryCount && isTokenError && this.autoRefresh) {
-    return this.autoRefreshToken(opts).then(() => {
-      opts._retryCount = 1;      // mutates caller's object
-      return this._apiRequest(opts);
-    });
-  }
-  throw err;
-});
-```
-
-#### Solution
-
-Introduce a private `_apiRequestOnce` helper that accepts an explicit `retried` boolean parameter. The public `_apiRequest` delegates to it with `retried = false`.
+**Before**
 
 ```js
-// Proposed:
-const _isTokenError = (err) =>
-  err.errorCode === 'INVALID_SESSION_ID' || err.errorCode === 'Bad_OAuth_Token';
-
-const _apiRequestOnce = function (opts, retried) {
-  const ropts = optionHelper.getApiRequestOptions(opts);
-  ropts.signal = buildSignal(ropts.signal, this.timeout);
-  const uri = optionHelper.getFullUri(ropts);
-  const sobject = opts.sobject;
-
-  return fetch(uri, ropts)
-    .then((res) => responseFailureCheck(res))
-    .then((res) => unsuccessfulResponseCheck(res))
-    .then((res) => {
-      if (opts.blob) return res.arrayBuffer();
-      if (util.isJsonResponse(res)) {
-        return res.json().catch((e) => {
-          if (e instanceof SyntaxError) throw errors.invalidJson();
-          throw e;
-        });
-      }
-      return res.text();
-    })
-    .then((body) => addSObjectAndId(body, sobject))
-    .catch((err) => {
-      if (
-        !retried &&
-        _isTokenError(err) &&
-        this.autoRefresh === true &&
-        (opts.oauth?.refresh_token || (this.username && this.password))
-      ) {
-        return this.autoRefreshToken(opts).then(() =>
-          _apiRequestOnce.call(this, opts, true)
-        );
-      }
-      throw err;
-    });
-};
-
-const _apiRequest = function (opts) {
-  return _apiRequestOnce.call(this, opts, false);
-};
-```
-
-#### Step-by-step mechanics
-
-1. Copy the body of `_apiRequest` into a new module-scoped function `_apiRequestOnce(opts, retried)`.
-2. Replace `!opts._retryCount` with `!retried` in the catch guard.
-3. Replace `opts._retryCount = 1; return this._apiRequest(opts)` with `_apiRequestOnce.call(this, opts, true)`.
-4. Extract `_isTokenError(err)` as a named predicate (replaces the inline string comparisons — also addresses the Open/Closed violation for retry logic).
-5. Change `_apiRequest` to be a one-line delegator: `return _apiRequestOnce.call(this, opts, false)`.
-6. Remove all references to `opts._retryCount` from the codebase.
-7. Update exports: `_apiRequest` remains exported; `_apiRequestOnce` and `_isTokenError` are module-private (not exported).
-8. Run `npm test` to confirm no regressions.
-
-#### Risks / Mitigations
-
-- **Risk:** Internal recursion path changes. **Mitigation:** Tests in `test/errors.js` exercise the auto-refresh path; run them before and after.
-- **Risk:** `_isTokenError` extraction could miss edge cases if error codes are not exhaustive. **Mitigation:** Extract as a const function with the exact same two-condition check.
-
----
-
-### R16 — Remove Side-Effect from `_apiAuthRequest`
-
-**Addresses:** M-11 (Side Effects — `_apiAuthRequest` Mutates Connection State)
-**Priority:** High | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Separate Query from Modifier
-**SOLID fix:** SRP
-
-#### Problem
-
-`_apiAuthRequest` in `lib/http.js` is a transport method but secretly writes to `this.oauth` in single-user mode. This overlaps with the credential-merge work already done by its callers (`authenticate`, `refreshToken`), making state management confusing and violating SRP.
-
-```js
-// Current (problematic):
-.then((jBody) => {
-  if (jBody.access_token && this.mode === CONST.SINGLE_MODE) {
-    Object.assign(this.oauth || (this.oauth = {}), jBody);  // side-effect
-  }
-  return jBody;
-});
-```
-
-#### Solution
-
-Remove the `Object.assign` side-effect block entirely from `_apiAuthRequest`. Responsibility for storing credentials belongs in `auth.js`, which already calls `_notifyAndResolve` and performs the oauth merge. For `authenticate()`, which does not call `_notifyAndResolve`, add explicit single-mode credential storage after the merge:
-
-```js
-// In auth.js authenticate():
-return this._apiAuthRequest(opts).then((res) => {
-  const newOauth = { ...opts.oauth, ...res };
-  if (opts.assertion) newOauth.assertion = opts.assertion;
-  if (this.mode === CONST.SINGLE_MODE) {
-    this.oauth = newOauth;          // explicit, visible assignment
-  }
-  return newOauth;                  // also drop the redundant Promise.resolve (see R28)
-});
-```
-
-#### Step-by-step mechanics
-
-1. Delete the second `.then((jBody) => { ... })` block (lines 138–143 of `lib/http.js`) from `_apiAuthRequest`.
-2. Remove the `CONST` import from `lib/http.js` if it becomes unused after this change.
-3. In `lib/auth.js` `authenticate()`, after computing `newOauth`, add the explicit single-mode storage as shown above.
-4. Verify `refreshToken()` already stores via `_notifyAndResolve` (it does — the notify path propagates to the connection).
-5. Run `npm test` to confirm all auth flows still pass.
-
-#### Risks / Mitigations
-
-- **Risk:** Some edge case relies on the auto-set in `_apiAuthRequest`. **Mitigation:** The smell report notes the callers already do the merge; search for any direct callers of `_apiAuthRequest` outside `auth.js` (there should be none).
-
----
-
-### R17 — Encapsulate Mock Server State in a Class
-
-**Addresses:** H-1 (Mutable Data — Global Module-Level State in `test/mock/sfdc-rest-api.js`)
-**Priority:** High | **Complexity:** Medium | **Risk:** Low
-**Refactoring Technique:** Extract Class + Change Value to Reference (test isolation variant)
-**GRASP fix:** Low Coupling, Protected Variations
-
-#### Problem
-
-`serverStack`, `requestStack`, and `port` are module-level mutable variables shared across all test files that `require` the mock module. The `getLastRequest()` function reads `requestStack[0]` — the first (not last) item — and the naming is misleading (see also R27).
-
-#### Solution
-
-Wrap all mock state in a `MockSfdcApi` class instantiated per test suite:
-
-```js
-// test/mock/sfdc-rest-api.js
-
-'use strict';
-
+// test/mock/cometd-server.js — no crypto import at top
 const http = require('http');
-const CONST = require('../../lib/constants');
-const apiVersion = CONST.API;
+...
+const acceptKey = crypto.createHash('sha1')
+  .update(key + '258EAFA5-E914-47DA-95CA-5AB5DC65C97B')
+  .digest('base64');
+```
 
-class MockSfdcApi {
-  constructor(port) {
-    this.port = port || process.env.PORT || 33333;
-    this._servers = [];
-    this._recordedRequests = [];
-  }
+**After**
 
-  reset() {
-    this._recordedRequests.length = 0;
-  }
+```js
+const http = require('http');
+const crypto = require('crypto');
+...
+const acceptKey = crypto.createHash('sha1')
+  .update(key + '258EAFA5-E914-47DA-95CA-5AB5DC65C97B')
+  .digest('base64');
+```
 
-  getLastRequest() {
-    return this._recordedRequests[this._recordedRequests.length - 1];
-  }
+**Steps**
 
-  // ... all instance methods using this._servers, this._recordedRequests, this.port
-  getClient(opts = {}) {
-    return {
-      clientId: 'ADFJSD234ADF765SFG55FD54S',
-      clientSecret: 'adsfkdsalfajdskfa',
-      redirectUri: `http://localhost:${this.port}/oauth/_callback`,
-      loginUri: `http://localhost:${this.port}/login/uri`,
-      apiVersion: opts.apiVersion || apiVersion,
-      mode: opts.mode || 'multi',
-      autoRefresh: opts.autoRefresh || false,
-      onRefresh: opts.onRefresh || undefined,
-    };
-  }
+1. Open `test/mock/cometd-server.js`.
+2. Add `const crypto = require('crypto');` after the existing `require('http')` line.
+3. Run the full test suite (`npm test`) to confirm no regressions.
 
-  getOAuth() {
-    return {
-      id: `http://localhost:${this.port}/id/00Dd0000000fOlWEAU/005d00000014XTPAA2`,
-      issued_at: '1362448234803',
-      instance_url: `http://localhost:${this.port}`,
-      signature: 'djaflkdjfdalkjfdalksjfalkfjlsdj',
-      access_token: 'aflkdsjfdlashfadhfladskfjlajfalskjfldsakjf',
-    };
-  }
+---
 
-  start(cb) {
-    this.getGoodServerInstance()
-      .then(() => cb())
-      .catch((err) => { console.error(err); cb(err); });
-  }
+### R02 — Fix Silent Error Swallowing in Test Promise Chains
 
-  stop(cb) {
-    this._clearServers()
-      .catch(console.error)
-      .finally(() => cb());
-  }
+| Attribute | Value |
+|-----------|-------|
+| Files | `test/crud.js` (4 occurrences), `test/query.js` (9 occurrences) |
+| Smell | Afraid to Fail (High — Test Smell) |
+| Technique | **Substitute Algorithm** (replace flawed pattern with correct Mocha idiom) |
+| Priority | **Critical** |
+| Complexity | Simple |
+| Risk | Low — test-only change |
 
-  // ... private helpers _clearServers, getServerInstance, getGoodServerInstance, getClosedServerInstance
+**Problem**
+
+Thirteen tests use this pattern:
+
+```js
+.catch((err) => should.not.exist(err))
+.finally(() => done());
+```
+
+The intent is to fail the test on unexpected errors, but the pattern is broken. When `should.not.exist(err)` throws an assertion error, the `.finally()` block calls `done()` unconditionally, which Mocha interprets as a passing test. Tests that should fail can silently pass.
+
+**Before** (representative example from `test/crud.js`)
+
+```js
+it('should create a proper request on insert', (done) => {
+  org.insert({ sobject: obj, oauth: oauth })
+    .then((res) => {
+      should.exist(res);
+      api.getLastRequest().url.should.equal('/services/data/...');
+    })
+    .catch((err) => {
+      should.not.exist(err);     // assertion error here is swallowed
+    })
+    .finally(() => done());       // done() called regardless
+});
+```
+
+**After** — Option A (preferred for Mocha 6+): return the promise, remove the callback
+
+```js
+it('should create a proper request on insert', () => {
+  return org.insert({ sobject: obj, oauth: oauth })
+    .then((res) => {
+      should.exist(res);
+      api.getLastRequest().url.should.equal('/services/data/...');
+    });
+  // Mocha handles promise rejections automatically — no .catch needed
+});
+```
+
+**After** — Option B: pass error to `done()` when using callback style
+
+```js
+it('should create a proper request on insert', (done) => {
+  org.insert({ sobject: obj, oauth: oauth })
+    .then((res) => {
+      should.exist(res);
+      api.getLastRequest().url.should.equal('/services/data/...');
+      done();
+    })
+    .catch(done);   // passes the error to Mocha, which marks the test as failed
+});
+```
+
+**Steps**
+
+1. In each of the 13 affected tests, choose Option A (return the promise) where the test uses no other side effects requiring explicit teardown.
+2. Where explicit teardown is needed, choose Option B and replace `.finally(() => done())` with `.catch(done)` and add an explicit `done()` call at the end of the `.then()` block.
+3. Run `npm test` — the test count should be unchanged, and any newly surfaced failures represent real bugs previously masked.
+
+**Sequencing Note**: Run this refactoring after R03 to ensure any bugs it reveals in production code are distinguishable.
+
+---
+
+### R03 — Fix `upsert()` to Use `applyBody` Helper
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/api.js` lines 253–262 |
+| Smell | Oddball Solution / Bug Risk (Medium, effective High) |
+| Technique | **Substitute Algorithm** |
+| Priority | **High** |
+| Complexity | Simple |
+| Risk | Low (functional improvement, no API surface change) |
+
+**Problem**
+
+`insert()` and `update()` both route through `applyBody(opts, type, payloadFn)` which correctly detects Document/Attachment/ContentVersion SObjects and builds a multipart body. `upsert()` skips `applyBody` and directly sets `opts.body = JSON.stringify(...)`, producing a JSON-only body for binary SObjects instead of the required multipart request. This is a silent functional bug.
+
+**Before**
+
+```js
+const upsert = function (data) {
+  const opts = this._getOpts(data);
+  const type = opts.sobject.getType();
+  const extIdField = opts.sobject.getExternalIdField();
+  const extId = opts.sobject.getExternalId();
+  opts.resource = sobjectPath(type, extIdField, extId);
+  opts.method = 'PATCH';
+  opts.body = JSON.stringify(opts.sobject.toPayload());   // bypasses applyBody
+  return this._apiRequest(opts);
+};
+```
+
+**After**
+
+```js
+const upsert = function (data) {
+  const opts = this._getOpts(data);
+  const type = opts.sobject.getType();
+  const extIdField = opts.sobject.getExternalIdField();
+  const extId = opts.sobject.getExternalId();
+  opts.resource = sobjectPath(type, extIdField, extId);
+  opts.method = 'PATCH';
+  applyBody(opts, type, () => opts.sobject.toPayload());  // consistent with insert/update
+  return this._apiRequest(opts);
+};
+```
+
+**Steps**
+
+1. In `lib/api.js`, locate the `upsert` function (lines 253–262).
+2. Replace `opts.body = JSON.stringify(opts.sobject.toPayload());` with `applyBody(opts, type, () => opts.sobject.toPayload());`.
+3. Verify that `applyBody` is already in scope at this point in the file (it is — defined above the CRUD section).
+4. Add a test case for upserting a ContentVersion SObject with binary data to `test/crud.js` to cover the multipart path for upsert.
+
+---
+
+### R04 — Fix Assignment Spacing in `lib/api.js`
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/api.js` lines 226, 240, 241, 255, 257, 271, 272 |
+| Smell | Inconsistent Style (Medium) |
+| Technique | **Rename Method** analogue — mechanical formatting correction |
+| Priority | Medium |
+| Complexity | Trivial |
+| Risk | None |
+
+**Problem**
+
+Seven assignment statements are missing a space between the variable name and `=`:
+
+```js
+const type =opts.sobject.getType();    // should be: const type = opts.sobject.getType();
+const id =opts.sobject.getId();        // should be: const id = opts.sobject.getId();
+const extId =opts.sobject.getExternalId();
+```
+
+This appears in `insert`, `update`, `upsert`, and `_delete` — all four core CRUD functions — suggesting copy-paste construction without a final formatting pass.
+
+**Steps**
+
+1. Run `npx eslint --fix lib/api.js` (the `space-infix-ops` rule will auto-correct these).
+2. If the ESLint rule is not enabled, manually add the spaces using search-and-replace with regex `=opts` → `= opts`.
+3. Verify no logic change: `git diff lib/api.js` should show whitespace-only changes.
+
+**Note**: R03 also touches these lines for `upsert`, so apply R03 first to avoid conflicts.
+
+---
+
+### R05 — Extract `_resubscribeAll()` Method in `lib/cometd.js`
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/cometd.js` lines 382–384 and 417–419 |
+| Smell | Duplicated Code (Low) |
+| Technique | **Extract Method** |
+| Priority | Medium |
+| Complexity | Simple |
+| Risk | Low |
+
+**Problem**
+
+The identical re-subscription loop appears in two separate async methods:
+
+```js
+// _rehandshake() — lines 382–384
+for (const topic of this._subscriptions.keys()) {
+  await this._sendSubscribe(topic);
 }
 
-module.exports = { MockSfdcApi };
-```
-
-Each test file then does:
-
-```js
-const { MockSfdcApi } = require('./mock/sfdc-rest-api');
-const api = new MockSfdcApi(33333);
-
-before((done) => api.start(done));
-after((done) => api.stop(done));
-beforeEach(() => api.reset());
-```
-
-#### Step-by-step mechanics
-
-1. Create `MockSfdcApi` class in `test/mock/sfdc-rest-api.js`, moving all module-level vars to instance fields.
-2. Convert all module-level functions to instance methods.
-3. Fix `getLastRequest()` to return `this._recordedRequests[this._recordedRequests.length - 1]` (true last request) — also resolves M-13/R27.
-4. Rename `serverStack` → `_servers`, `requestStack` → `_recordedRequests` in the class — also resolves L-8.
-5. Export `{ MockSfdcApi }` (named export, not singleton functions).
-6. Update `test/crud.js`, `test/query.js`, `test/errors.js`, `test/connection.js`, and any other consumer to instantiate `new MockSfdcApi(port)` instead of calling module functions directly.
-7. Run `npm test` to confirm all suites pass independently.
-
-#### Risks / Mitigations
-
-- **Risk:** Multiple test files currently use the same module-level `start`/`stop` API. **Mitigation:** This is a mechanical search-and-replace across test files. The functional behavior is identical; only the invocation style changes.
-
----
-
-### R18 — Extract `_resubscribeAll()` in `cometd.js`
-
-**Addresses:** M-3 (Duplicated Code — Repeated Subscription Re-Subscription Loop)
-**Priority:** High | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Extract Method + Pull Up Method (within same class)
-**SOLID fix:** DRY
-
-#### Problem
-
-Both `_rehandshake()` and `_scheduleReconnect()` contain the identical subscription re-subscription loop. Any change to re-subscribe logic must be applied in two places.
-
-```js
-// In both _rehandshake and _scheduleReconnect:
+// _scheduleReconnect() — lines 417–419
 for (const topic of this._subscriptions.keys()) {
   await this._sendSubscribe(topic);
 }
 ```
 
-#### Solution
+Any change to re-subscription logic (e.g., error handling per topic, replay extension state) must be made in two places.
 
-Extract to a named helper method `_resubscribeAll()`:
+**After**
 
 ```js
 /**
- * Re-subscribe to all active topics after a reconnect or re-handshake.
- * @returns {Promise<void>}
+ * Re-subscribe all active topics after a handshake.
  */
 async _resubscribeAll() {
   for (const topic of this._subscriptions.keys()) {
     await this._sendSubscribe(topic);
   }
 }
-```
 
-Then in both callers:
-
-```js
-// _rehandshake:
+// In _rehandshake():
 await this.handshake();
 await this._resubscribeAll();
 
-// _scheduleReconnect:
+// In _scheduleReconnect():
 await this.handshake();
+this._reconnectAttempts = 0;
 await this._resubscribeAll();
 await this.connect();
 ```
 
-#### Step-by-step mechanics
+**Steps**
 
-1. Add `_resubscribeAll()` as a new `async` method on `CometDClient`.
-2. Replace the two identical `for...of` loops in `_rehandshake` and `_scheduleReconnect` with `await this._resubscribeAll()`.
-3. Run `npm test` (streaming tests) to confirm reconnect behavior unchanged.
-
----
-
-### R19 — Extract Blob Getter Factory `_blobGetter` in `api.js`
-
-**Addresses:** M-2 (Duplicated Code — Repeated Blob Retrieval Methods)
-**Priority:** High | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Extract Method + Parameterize Method
-**SOLID fix:** DRY, OCP
-
-#### Problem
-
-`getAttachmentBody`, `getDocumentBody`, and `getContentVersionData` are structurally identical six-line functions differing only in the SObject type string and body path segment. The `BODY_GETTER_MAP` already recognizes the three variants but delegates to three identical implementations.
-
-#### Solution
-
-Introduce a higher-order factory function `_blobGetter`:
-
-```js
-/**
- * Factory that creates a blob-retrieval API method for a given SObject type and body segment.
- * @param {string} sobjectType - e.g. 'attachment', 'document', 'contentversion'
- * @param {string} bodySegment - e.g. 'body', 'versiondata'
- * @returns {Function} An API method (data) => Promise<ArrayBuffer>
- */
-const _blobGetter = (sobjectType, bodySegment) =>
-  function (data) {
-    const opts = this._getOpts(data);
-    const id = resolveId(opts);
-    opts.resource = sobjectPath(sobjectType, id, bodySegment);
-    opts.method = 'GET';
-    opts.blob = true;
-    return this._apiRequest(opts);
-  };
-
-const getAttachmentBody    = _blobGetter('attachment',    'body');
-const getDocumentBody      = _blobGetter('document',      'body');
-const getContentVersionData = _blobGetter('contentversion', 'versiondata');
-```
-
-The JSDoc comment previously on each individual function should be consolidated as a comment above the factory, with per-constant annotations if desired.
-
-#### Step-by-step mechanics
-
-1. Add `_blobGetter` as a module-scoped factory above the three functions.
-2. Replace the three function bodies with the factory invocations.
-3. Confirm that the `BODY_GETTER_MAP` and `getBinaryContent` dispatch table still point to the same exported names — no change needed there.
-4. Run `npm test` (specifically blob/binary tests in `test/crud.js`).
+1. Create the `_resubscribeAll()` async method in `CometDClient` (place it near `_sendSubscribe`).
+2. Replace both inline loops with `await this._resubscribeAll()`.
+3. Run `npm test` to confirm behaviour is unchanged.
 
 ---
 
-### R20 — Extract Private `_get()` Helper for GET Methods in `api.js`
+### R06 — Remove Redundant `Promise.resolve()` Wrappers in `lib/auth.js`
 
-**Addresses:** M-1 (Duplicated Code — Repeated `opts.resource/method/return` Pattern)
-**Priority:** Medium | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Extract Method + Parameterize Method
-**SOLID fix:** DRY
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/auth.js` lines 133, 187 |
+| Smell | Dispensable Code (Medium) |
+| Technique | **Inline Temp** |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | None |
 
-#### Problem
+**Problem**
 
-Six consecutive API methods (`getResources`, `getSObjects`, `getMetadata`, `getDescribe`, `getLimits`, `getPasswordStatus`) share an identical three-line structure: assign `opts.resource`, set `opts.method = 'GET'`, return `this._apiRequest(opts)`.
+Inside `.then()` callbacks, `return Promise.resolve(value)` is functionally identical to `return value`. The `.then()` handler's return value is automatically wrapped in a resolved promise by the Promises/A+ specification. The `Promise.resolve()` call adds noise without behaviour change.
 
-#### Solution
-
-Introduce a private helper `_get(opts, resource)` as a module-scoped function:
-
-```js
-/**
- * Convenience helper: set resource and method, then dispatch via _apiRequest.
- * Used by all read-only metadata API methods.
- * @param {object} opts - Request options (mutated in place).
- * @param {string} resource - Resource path to set on opts.
- * @returns {Promise<object>}
- */
-const _get = function (opts, resource) {
-  opts.resource = resource;
-  opts.method = 'GET';
-  return this._apiRequest(opts);
-};
-```
-
-Example usage in `getResources`:
+**Before**
 
 ```js
-const getResources = function (data) {
-  const opts = this._getOpts(data);
-  return _get.call(this, opts, '/');
-};
+// lib/auth.js line 133 (_notifyAndResolve)
+return Promise.resolve(newOauth);
+
+// lib/auth.js line 187 (authenticate)
+return Promise.resolve(newOauth);
 ```
 
-Note: This helper is **not exported** — it is module-internal, called via `.call(this, ...)`.
+**After**
 
-#### Step-by-step mechanics
+```js
+return newOauth;
+```
 
-1. Add `_get` as a module-scoped `function` (not a method — it needs `this` via `.call`).
-2. Replace the three-line pattern in each of the six GET-only methods.
-3. Run `npm test` (query/crud tests) to verify.
+**Steps**
 
-**Important:** Do not use `_get` for methods that also set `opts.body` or other properties beyond resource/method, e.g. `updatePassword`. Only apply to pure GET dispatchers.
+1. In `lib/auth.js`, find the two occurrences of `return Promise.resolve(newOauth);`.
+2. Replace both with `return newOauth;`.
+3. Run `npm test` to verify no behaviour change.
 
 ---
 
-### R21 — Replace `onRefresh` Callback Convention with Promise-Returning Hook
+### R07 — Fix Quote Style in `lib/cometd.js`
 
-**Addresses:** M-14 (Callback-Style API Mixed with Promise)
-**Priority:** Medium | **Complexity:** Medium | **Risk:** Medium
-**Refactoring Technique:** Replace Error Code with Exception (async variant) — specifically, migrating the legacy callback-bridge to a native Promise chain
-**SOLID fix:** Consistent interface contract, eliminates mixed async paradigms
-**Breaking Change:** Yes — requires semver minor or major bump
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/cometd.js` — all string literals |
+| Smell | Inconsistent Style (Medium) |
+| Technique | **Substitute Algorithm** (mechanical style normalization) |
+| Priority | Medium |
+| Complexity | Simple |
+| Risk | Low |
 
-#### Problem
+**Problem**
 
-`_notifyAndResolve` in `lib/auth.js` bridges the Promise-based library to an error-first callback convention for `onRefresh`. The entire library is Promise-based; this is the sole callback exception.
+`lib/cometd.js` uses double-quoted strings throughout (`"use strict"`, `"Content-Type"`, `"websocket"`) while the ESLint config enforces `quotes: ['error', 'single']` across the rest of the codebase. Running `npx eslint lib/cometd.js` likely reports errors on every string literal in the file.
+
+**Steps**
+
+1. Run `npx eslint --fix lib/cometd.js`.
+2. Review the diff to confirm only quote characters changed — no logic was modified.
+3. Run `npm test`.
+
+**Note**: This is a pure style change. If the file was intentionally excluded from ESLint (unlikely), document that decision instead.
+
+---
+
+### R08 — Replace Inline `require` with Top-Level Import in `test/mock/cometd-server.js`
+
+| Attribute | Value |
+|-----------|-------|
+| File | `test/mock/cometd-server.js` line 277 |
+| Smell | Clever Code (Low) |
+| Technique | **Inline Method** analogue — hoist the require |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | None |
+
+**Problem**
 
 ```js
-// Current (problematic):
+const emitter = new (require('events').EventEmitter)();
+```
+
+An inline `require()` inside a method body is unusual and adds visual noise. `require()` calls are conventionally placed at the top of the file.
+
+**After**
+
+```js
+// At top of file with other requires:
+const EventEmitter = require('events');
+
+// In the method:
+const emitter = new EventEmitter();
+```
+
+**Steps**
+
+1. Add `const EventEmitter = require('events');` to the top of `test/mock/cometd-server.js` with the other requires (after R01 adds `const crypto = require('crypto')`).
+2. Replace the inline `new (require('events').EventEmitter)()` with `new EventEmitter()`.
+
+---
+
+### R09 — Modernise `onRefresh` to Accept Promises in `lib/auth.js`
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/auth.js` lines 117–135 (`_notifyAndResolve`) |
+| Smell | Callback Hell / Mixed Paradigm (Medium) |
+| Technique | **Replace Parameter with Method Call** + **Substitute Algorithm** |
+| Priority | Medium |
+| Complexity | Moderate |
+| Risk | Medium — changes the documented `onRefresh` contract |
+
+**Problem**
+
+`_notifyAndResolve` wraps the `onRefresh` callback in a `Promise` constructor, forcing library users to write old-style callbacks inside an otherwise fully promise-based library:
+
+```js
 const _notifyAndResolve = function (newOauth, oldOauth) {
   if (this.onRefresh) {
     return new Promise((resolve, reject) => {
@@ -478,562 +419,516 @@ const _notifyAndResolve = function (newOauth, oldOauth) {
 };
 ```
 
-#### Solution
+Users must write `onRefresh: (newOauth, oldOauth, done) => { ...; done(); }` when `onRefresh: async (newOauth, oldOauth) => { ... }` would be far more natural.
 
-Accept `onRefresh` as a function that may return a Promise (or `void`). Use `Promise.resolve()` wrapping to handle both sync and async returns uniformly:
+**After**
 
 ```js
-/**
- * Notify the onRefresh hook if configured, then resolve with the updated OAuth.
- * onRefresh may be async (return a Promise) or synchronous (return void/undefined).
- * @param {object} newOauth - The newly obtained OAuth credentials.
- * @param {object} oldOauth - The previous OAuth credentials.
- * @returns {Promise<object>} Resolves with newOauth.
- */
 const _notifyAndResolve = function (newOauth, oldOauth) {
   if (this.onRefresh) {
-    return Promise.resolve(this.onRefresh(newOauth, oldOauth)).then(() => newOauth);
-  }
-  return Promise.resolve(newOauth);
-};
-```
-
-#### Migration notes
-
-- Callers that pass `onRefresh: (newOauth, oldOauth, cb) => { cb(); }` will continue to work **silently** because:
-  - Their function receives `(newOauth, oldOauth)` — the third `cb` argument is never provided.
-  - The function returns `undefined`, which `Promise.resolve(undefined)` handles correctly.
-  - However, callers relying on calling `cb(err)` to signal errors will silently swallow those errors under the new API.
-- **Document the migration** in the changelog: `onRefresh` must now either return a rejected Promise to signal an error, or throw synchronously.
-- If backward compatibility with callback-style consumers is required in the same minor version, add a shim detection:
-
-```js
-const _notifyAndResolve = function (newOauth, oldOauth) {
-  if (!this.onRefresh) return Promise.resolve(newOauth);
-  // Shim: detect if caller expects 3-argument callback form
-  if (this.onRefresh.length >= 3) {
-    // Legacy callback bridge — deprecated
-    return new Promise((resolve, reject) => {
-      this.onRefresh.call(this, newOauth, oldOauth, (err) => {
-        if (err) reject(err); else resolve(newOauth);
+    // Accept both: callback-style (arity=3) for backwards compatibility,
+    // and promise-returning or async functions (arity<3).
+    if (this.onRefresh.length >= 3) {
+      // Legacy callback path — wrap for backward compatibility
+      return new Promise((resolve, reject) => {
+        this.onRefresh.call(this, newOauth, oldOauth, (err) => {
+          if (err) reject(err);
+          else resolve(newOauth);
+        });
       });
-    });
+    }
+    // Modern path: onRefresh returns a value or a Promise
+    return Promise.resolve(this.onRefresh.call(this, newOauth, oldOauth))
+      .then(() => newOauth);
   }
-  return Promise.resolve(this.onRefresh(newOauth, oldOauth)).then(() => newOauth);
+  return newOauth;
 };
 ```
 
-The shim can be removed in the next major version.
+**Steps**
 
-#### Step-by-step mechanics
+1. In `lib/auth.js`, update `_notifyAndResolve` as shown above.
+2. Update the JSDoc to document both signatures.
+3. Add a test to `test/connection.js` for the async `onRefresh` path.
+4. Keep the existing callback test to confirm backward compatibility.
 
-1. Replace `_notifyAndResolve` body with the Promise-wrapping version.
-2. Update documentation/README to describe the new contract.
-3. Update `test/connection.js` tests for `_notifyAndResolve` if they pass a callback.
-4. Run `npm test` to confirm all auth/refresh tests pass.
-
----
-
-### R22 — Name WebSocket Frame Constants in `test/mock/cometd-server.js`
-
-**Addresses:** M-5 (Magic Numbers — WebSocket Frame Constants)
-**Priority:** Medium | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Replace Magic Number with Symbolic Constant
-
-#### Problem
-
-The hand-rolled WebSocket frame parser in `test/mock/cometd-server.js` uses raw RFC 6455 byte values (`0x80`, `0x7f`, `0x0f`, `0x1`, `0x8`, `0x81`, `0x88`, `126`, `127`, `4`, `10`, `65536`) without names, making the frame-handling logic opaque.
-
-#### Solution
-
-Add a named-constant block at the top of the file:
-
-```js
-// RFC 6455 WebSocket frame constants
-const WS_FIN_TEXT    = 0x81;  // FIN bit set + opcode 0x1 (text frame)
-const WS_FIN_CLOSE   = 0x88;  // FIN bit set + opcode 0x8 (close frame)
-const WS_OPCODE_MASK = 0x0f;  // low nibble mask for opcode extraction
-const WS_OPCODE_TEXT = 0x1;   // text data frame
-const WS_OPCODE_CLOSE= 0x8;   // connection close frame
-const WS_MASK_BIT    = 0x80;  // masking bit in second byte
-const WS_PAYLOAD_MASK= 0x7f;  // 7-bit payload length mask
-const WS_PAYLOAD_16  = 126;   // payload length sentinel: read next 2 bytes
-const WS_PAYLOAD_64  = 127;   // payload length sentinel: read next 8 bytes
-const WS_OFFSET_16   = 4;     // header offset when 16-bit extended length used
-const WS_OFFSET_64   = 10;    // header offset when 64-bit extended length used
-const WS_MAX_INLINE  = 126;   // max payload bytes in inline (1-byte) length form
-const WS_MAX_16BIT   = 65536; // max payload bytes in 16-bit length form
-```
-
-Then replace every bare literal in `_createWsWrapper` with these constants.
-
-#### Step-by-step mechanics
-
-1. Add the constant block near the top of `test/mock/cometd-server.js` (after `require` statements).
-2. Use global find-replace within that file only to substitute each literal.
-3. Read through `_createWsWrapper` once to confirm all usages are covered.
-4. Run streaming tests to confirm mock server still parses frames correctly.
+**Risk Mitigation**: The `function.length` check preserves full backward compatibility for existing `onRefresh` implementations. The breaking behaviour (accepting a Promise) is additive only.
 
 ---
 
-### R23 — Name `WS_RESPONSE_TIMEOUT_MS` Constant in `cometd.js`
+### R10 — Decompose `getAuthUri` Conditional Blocks in `lib/auth.js`
 
-**Addresses:** M-6 (Magic Number — Hardcoded WebSocket Timeout)
-**Priority:** Medium | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Replace Magic Number with Symbolic Constant
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/auth.js` lines 67–115 |
+| Smell | Conditional Complexity (Medium) |
+| Technique | **Substitute Algorithm** + **Extract Method** |
+| Priority | Low |
+| Complexity | Simple |
+| Risk | Low |
 
-#### Problem
+**Problem**
 
-`10000` (ms) appears inline in `lib/cometd.js` as the non-connect WebSocket response timeout. Unlike `DEFAULT_TIMEOUT` (110000 ms), it has no name, no configuration option, and no rationale comment.
+Eight consecutive `if` blocks all perform the same operation: conditionally copy an option from `opts` to `urlOpts`, with optional array-join for `scope` and `prompt`. The pattern is highly regular but verbose.
 
-#### Solution
-
-Add to the module-level constants block at the top of `lib/cometd.js`:
-
-```js
-const WS_RESPONSE_TIMEOUT_MS = 10000; // non-connect WebSocket response timeout
-```
-
-Replace the inline `10000` with `WS_RESPONSE_TIMEOUT_MS`.
-
-#### Step-by-step mechanics
-
-1. Add the constant to the module-level block alongside `DEFAULT_TIMEOUT`, `BAYEUX_VERSION`, etc.
-2. Replace `}, 10000);` with `}, WS_RESPONSE_TIMEOUT_MS);`.
-3. Run streaming tests.
-
----
-
-### R24 — Standardize Optional-Argument Pattern in `fdcstream.js`
-
-**Addresses:** M-7 (Inconsistent Style — Mixed `opts || {}` and Default Parameter Syntax)
-**Priority:** Medium | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Substitute Algorithm (style normalization)
-
-#### Problem
-
-`lib/fdcstream.js` uses the old `opts = opts || {}` guard in three places, while all other modules use ES6 default parameter syntax `(opts = {})`.
+**Before** (pattern repeated 8 times)
 
 ```js
-// fdcstream.js (old style):
-constructor(opts) {
-  opts = opts || {};
-  ...
+if (opts.display) {
+  urlOpts.display = opts.display.toLowerCase();
 }
-subscribe(opts) {
-  opts = opts || {};
-  ...
-}
-```
-
-#### Solution
-
-Convert to ES6 default parameters throughout `fdcstream.js`:
-
-```js
-constructor(opts = {}) {
-  // opts is guaranteed an object, remove the guard assignment
-  ...
-}
-
-subscribe(opts = {}) {
-  // same
-  ...
-}
-```
-
-Note: The `Subscription` constructor also uses `opts = opts || {}` on line 18. Fix that too.
-
-#### Step-by-step mechanics
-
-1. Change all three method signatures in `fdcstream.js` to use `= {}` default.
-2. Remove the `opts = opts || {};` assignment lines inside the method bodies.
-3. Run `npm test` (streaming tests) to confirm behavior unchanged.
-
----
-
-### R25 — Add JSDoc `@typedef` Shapes for `opts` Bags
-
-**Addresses:** M-4 (Primitive Obsession — The `opts` Bag as Catch-All Parameter Object)
-**Priority:** Medium | **Complexity:** Medium | **Risk:** Low
-**Refactoring Technique:** Introduce Parameter Object (documentation tier — no runtime change)
-**SOLID fix:** ISP — makes the interface contract explicit
-
-#### Problem
-
-The `opts` object flowing through all API methods has no defined shape. Over 20 undocumented properties spread across `api.js`, `http.js`, and `optionhelper.js` with no typedef, making the API contract invisible to callers and IDE tooling.
-
-#### Solution
-
-Add a JSDoc `@typedef` file (or block at the top of `lib/api.js`) defining the common option shapes:
-
-```js
-/**
- * @typedef {object} ApiRequestOptions
- * @property {object}  oauth              - OAuth credentials.
- * @property {string}  [resource]         - Relative API resource path (e.g. '/sobjects/Account').
- * @property {string}  [uri]              - Absolute URI (overrides resource).
- * @property {string}  [method]           - HTTP method: 'GET', 'POST', 'PATCH', 'DELETE'.
- * @property {string}  [body]             - Serialized request body.
- * @property {object}  [headers]          - Additional HTTP headers.
- * @property {object}  [qs]               - Query string parameters.
- * @property {boolean} [blob=false]       - If true, return response as ArrayBuffer.
- * @property {boolean} [raw=false]        - If true, skip Record wrapping on responses.
- * @property {AbortSignal} [signal]       - AbortSignal for request cancellation.
- * @property {object}  [requestOpts]      - Additional fetch options merged onto request.
- */
-
-/**
- * @typedef {object} CrudOptions
- * @extends ApiRequestOptions
- * @property {Record|object} [sobject]    - SObject record instance or plain object.
- * @property {string}        [type]       - SObject API name (e.g. 'Account').
- * @property {string}        [id]         - Salesforce record ID.
- * @property {string[]}      [fields]     - Field names to retrieve (for retrieve()).
- */
-
-/**
- * @typedef {object} QueryOptions
- * @extends ApiRequestOptions
- * @property {string}  query              - SOQL query string.
- * @property {boolean} [fetchAll=false]   - If true, auto-paginate all result pages.
- * @property {boolean} [includeDeleted=false] - If true, query deleted records.
- * @property {boolean} [raw=false]        - If true, return plain objects not Record instances.
- */
-```
-
-Place these typedef blocks at the top of `lib/api.js` (after requires). They provide IDE autocomplete and serve as living documentation without requiring TypeScript migration.
-
-#### Step-by-step mechanics
-
-1. Add `@typedef` blocks at the top of `lib/api.js`.
-2. Update method-level `@param {object} data` annotations to reference the relevant typedef (e.g., `@param {CrudOptions} data`).
-3. No runtime changes — this is documentation only.
-
----
-
-### R26 — Remove Section-Divider Comments in `api.js`
-
-**Addresses:** M-8 (What Comment / Redundant Comments)
-**Priority:** Low | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Remove Comments (where function names make them redundant)
-
-#### Problem
-
-Three section-divider comments in `lib/api.js` (`/* CRUD methods */`, `/* Blob/binary methods */`, `/* Search */`) add no information beyond what the function names and JSDoc already convey.
-
-#### Solution
-
-Delete the three `/* ... */` section divider blocks. Separate logical groups visually with a single blank line between them.
-
-#### Step-by-step mechanics
-
-1. Delete lines containing `/* CRUD methods */`, `/* Blob/binary methods */`, and `/* Search */`.
-2. If desired, add blank lines to preserve visual grouping.
-3. No tests required — comment deletion is a cosmetic change.
-
----
-
-### R27 — Fix `getLastRequest` Naming / Semantics in Mock
-
-**Addresses:** M-13 (Fallacious Method Name)
-**Priority:** Medium | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Rename Method + Substitute Algorithm (fix the semantics, not just the name)
-**Note:** Subsumed into R17 if that refactoring is done — implement as part of the class redesign.
-
-#### Problem
-
-`getLastRequest()` returns `requestStack[0]` — the first-pushed item, not the last. The name is wrong, and the current behavior is only safe because `reset()` is called in `afterEach`, keeping the stack to a single item.
-
-#### Solution (if R17 is not implemented)
-
-Change the accumulation strategy to unshift (prepend) so `[0]` is always the most-recent request:
-
-```js
-// In the request handler:
-requestStack.unshift(req);           // prepend — index 0 is newest
-
-// getLastRequest is now semantically correct:
-const getLastRequest = () => requestStack[0];
-```
-
-Alternatively, change to read from the end:
-
-```js
-const getLastRequest = () => requestStack[requestStack.length - 1];
-```
-
-**If R17 is implemented,** fix this as part of the `MockSfdcApi` class (see R17 solution — `_recordedRequests` uses `push` + `length - 1` for true last).
-
-#### Step-by-step mechanics
-
-1. Change `requestStack.push(req)` to `requestStack.unshift(req)` in the request handler, OR change `getLastRequest` to read from `length - 1`.
-2. Run all test suites to verify request assertions still hold.
-
----
-
-### R28 — Eliminate Dead Code and Redundant Constructs
-
-**Addresses:** L-3 (Dead Code), L-5 (Redundant Assignment), M-15 (Redundant `Promise.resolve`), L-9 (Unused `isBoolean` Export)
-**Priority:** Low | **Complexity:** Low | **Risk:** Low
-**Refactoring Technique:** Inline Temp (for `Promise.resolve` wrap), Remove Dead Code
-
-#### Problem
-
-Several small dead-code and redundant-code instances remain:
-
-1. **`test/integration.js` lines 15–16:** Empty `if (creds == null) { /* comments */ }` block — no executable code.
-2. **`test/integration.js` line 7:** `let client = undefined;` — explicit `undefined` is redundant.
-3. **`lib/auth.js` line 187:** `return Promise.resolve(newOauth)` inside a `.then()` — wrapping is unnecessary.
-4. **`lib/util.js` `isBoolean`:** Exported but unused in `lib/` or tests.
-
-#### Solution
-
-Fix each instance:
-
-```js
-// 1. Remove empty if block in test/integration.js
-// Delete:
-if (creds == null) {
-  // Can't run integration tests
-  // Mocha.suite.skip();
-}
-
-// 2. Change redundant undefined assignment:
-let client;   // was: let client = undefined;
-
-// 3. Remove Promise.resolve wrap in auth.js authenticate():
-return newOauth;   // was: return Promise.resolve(newOauth);
-
-// 4. lib/util.js — remove isBoolean from module.exports,
-//    or add a JSDoc comment explaining it is intentionally kept for plugin authors.
-```
-
-#### Step-by-step mechanics
-
-1. In `test/integration.js`: delete the empty `if` block; change `let client = undefined` to `let client`.
-2. In `lib/auth.js` `authenticate()`: change `return Promise.resolve(newOauth)` to `return newOauth`.
-3. In `lib/util.js`: decide — either remove `isBoolean` from exports, or add `// Exported for plugin authors` comment. If removed, run `npm test` to confirm nothing imports it.
-
----
-
-### R29 — Extract `_parseWsFrames` / `_buildWsFrame` Helpers in Test Mock
-
-**Addresses:** L-12 (Long Method — `_createWsWrapper`)
-**Priority:** Low | **Complexity:** Medium | **Risk:** Low
-**Refactoring Technique:** Extract Method (applied to test helper code)
-
-#### Problem
-
-`_createWsWrapper` in `test/mock/cometd-server.js` is 84 lines long and handles WebSocket frame parsing, unmasking, opcode dispatch, and frame serialization in a single inline closure. This makes the method difficult to read and maintain even for test code.
-
-#### Solution
-
-Extract two focused helper methods on `MockCometDServer`:
-
-```js
-/**
- * Parse as many complete WebSocket frames as possible from `buffer`.
- * @param {Buffer} buffer - Current accumulation buffer.
- * @returns {{ frames: Array<{opcode: number, payload: string}>, remainder: Buffer }}
- */
-_parseWsFrames(buffer) {
-  const frames = [];
-  let buf = buffer;
-  while (buf.length >= 2) {
-    const secondByte = buf[1];
-    const masked = (secondByte & WS_MASK_BIT) !== 0;
-    let payloadLen = secondByte & WS_PAYLOAD_MASK;
-    let offset = 2;
-
-    if (payloadLen === WS_PAYLOAD_16) {
-      if (buf.length < WS_OFFSET_16) break;
-      payloadLen = buf.readUInt16BE(2);
-      offset = WS_OFFSET_16;
-    } else if (payloadLen === WS_PAYLOAD_64) {
-      if (buf.length < WS_OFFSET_64) break;
-      payloadLen = Number(buf.readBigUInt64BE(2));
-      offset = WS_OFFSET_64;
-    }
-
-    const maskSize = masked ? 4 : 0;
-    const totalLen = offset + maskSize + payloadLen;
-    if (buf.length < totalLen) break;
-
-    let payload = buf.subarray(offset + maskSize, totalLen);
-    if (masked) {
-      const mask = buf.subarray(offset, offset + maskSize);
-      payload = Buffer.from(payload);
-      for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
-    }
-
-    const opcode = buf[0] & WS_OPCODE_MASK;
-    buf = buf.subarray(totalLen);
-    frames.push({ opcode, payload: payload.toString('utf8') });
-  }
-  return { frames, remainder: buf };
-}
-
-/**
- * Build a WebSocket text frame for `text`.
- * @param {string} text
- * @returns {Buffer}
- */
-_buildWsFrame(text) {
-  const payload = Buffer.from(text, 'utf8');
-  let header;
-  if (payload.length < WS_MAX_INLINE) {
-    header = Buffer.alloc(2);
-    header[0] = WS_FIN_TEXT;
-    header[1] = payload.length;
-  } else if (payload.length < WS_MAX_16BIT) {
-    header = Buffer.alloc(WS_OFFSET_16);
-    header[0] = WS_FIN_TEXT;
-    header[1] = WS_PAYLOAD_16;
-    header.writeUInt16BE(payload.length, 2);
+if (opts.scope) {
+  if (Array.isArray(opts.scope)) {
+    urlOpts.scope = opts.scope.join(' ');
   } else {
-    header = Buffer.alloc(WS_OFFSET_64);
-    header[0] = WS_FIN_TEXT;
-    header[1] = WS_PAYLOAD_64;
-    header.writeBigUInt64BE(BigInt(payload.length), 2);
+    urlOpts.scope = opts.scope;
   }
-  return Buffer.concat([header, payload]);
 }
+// ... 6 more identical if-blocks
 ```
 
-`_createWsWrapper` then becomes a thin orchestrator: calling `_parseWsFrames`, dispatching based on opcode, and using `_buildWsFrame` in the `send` method.
+**After**
 
-**Note:** R22 (named WS constants) should be implemented before or alongside R29 since both modify the same method and constants are used in the extracted helpers.
+```js
+const getAuthUri = function (opts = {}) {
+  const urlOpts = {
+    response_type: opts.responseType || 'code',
+    client_id: this.clientId,
+    redirect_uri: this.redirectUri,
+  };
 
-#### Step-by-step mechanics
+  // Simple copy: include field if present in opts
+  const simpleCopyFields = ['immediate', 'state', 'nonce'];
+  for (const field of simpleCopyFields) {
+    if (opts[field] !== undefined) urlOpts[field] = opts[field];
+  }
 
-1. Add `_parseWsFrames(buffer)` and `_buildWsFrame(text)` as methods on `MockCometDServer`.
-2. Refactor `_createWsWrapper` to call these methods.
-3. The `emitter.send` closure calls `this._buildWsFrame` — note `this` context; bind appropriately or pass as parameter.
-4. Run streaming tests to confirm mock behavior unchanged.
+  // Transformed copy: apply value transform before including
+  if (opts.display) urlOpts.display = opts.display.toLowerCase();
+  if (opts.loginHint) urlOpts.login_hint = opts.loginHint;
+
+  // Array-or-string fields (Salesforce uses space-delimited values)
+  const spaceJoinFields = ['scope', 'prompt'];
+  for (const field of spaceJoinFields) {
+    if (opts[field] !== undefined) {
+      urlOpts[field] = Array.isArray(opts[field])
+        ? opts[field].join(' ')
+        : opts[field];
+    }
+  }
+
+  if (opts.urlOpts) Object.assign(urlOpts, opts.urlOpts);
+
+  return this._authEndpoint(opts) + '?' + new URLSearchParams(urlOpts).toString();
+};
+```
+
+**Steps**
+
+1. Replace the body of `getAuthUri` in `lib/auth.js` with the refactored version.
+2. Run `npm test` to confirm `test/connection.js` tests for `getAuthUri` still pass (especially the scope/prompt array encoding tests).
 
 ---
 
-## Additional Observations (No New Recommendations)
+### R11 — Remove Redundant Intermediate Variable in `createSObject` (`index.js`)
 
-### L-1, L-2 — Test Indecent Exposure of Private Fields
+| Attribute | Value |
+|-----------|-------|
+| File | `index.js` lines 85–86 |
+| Smell | Lazy Element (Low) |
+| Technique | **Inline Temp** |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | None |
 
-Tests in `test/record.js` and `test/streaming.js` directly access `_fields`, `_changed`, `_previous` (Record) and `_clientId`, `_subscriptions`, `_connected` (CometDClient). These smells were identified in the report but no specific refactoring action is recommended at this time because:
-- Fixing them requires either adding public query methods to `Record` and `CometDClient` (API surface expansion) or restructuring the tests (non-trivial test rewrite).
-- The tests are functionally correct; the coupling is a maintenance risk, not a correctness issue.
-
-**Defer to a future phase** if/when `Record` or `CometDClient` internals are restructured.
-
-### L-4 — Loose Equality in `test/integration.js`
-
-`== null` is used in two places. These are intentional (they catch both `null` and `undefined`), but they are inconsistent with the rest of the codebase. Could be addressed in the same commit as R28 by changing to `=== null || === undefined` or using the nullish coalescing operator. Not assigned a separate recommendation number due to trivial scope.
-
-### L-6 — Inline `require('crypto')` in `cometd-server.js`
-
-Move `const crypto = require('crypto')` to the top of the file. This is a one-line fix; it can be done in the same commit as R22 or R29 to keep related changes together.
-
-### L-7 — Hardcoded Test Port Numbers
-
-Define `34445` as a named constant at the top of `test/streaming.js` where it currently appears as a magic literal for the second mock CometD server. This is one line; address in the same commit as R22 if touching that file.
-
-### L-11 — `_connectLoop` Catches Without Logging
-
-The catch blocks in `_connectLoop`, `_rehandshake`, and `_scheduleReconnect` silently discard errors. Emitting the original error via `transport:down` event data would improve debuggability:
+**Problem**
 
 ```js
-} catch (err) {
+const createSObject = (type, fields) => {
+  const data = fields || {};
+  data.attributes = { type: type };
+  const rec = new Record(data);
+  return rec;           // rec used only to be returned immediately
+};
+```
+
+The `rec` variable is assigned solely to be returned on the next line. It adds no explanatory value.
+
+**After**
+
+```js
+const createSObject = (type, fields) => {
+  const data = fields || {};
+  data.attributes = { type: type };
+  return new Record(data);
+};
+```
+
+**Steps**
+
+1. In `index.js`, remove the `const rec = new Record(data);` line and replace `return rec;` with `return new Record(data);`.
+
+---
+
+### R12 — Replace Magic Array in `findId` with Named Constant (`lib/util.js`)
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/util.js` lines 58–63 |
+| Smell | Magic Number / Primitive Obsession (Low) |
+| Technique | **Replace Magic Number with Symbolic Constant** |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | None |
+
+**Problem**
+
+```js
+const flavors = ['Id', 'id', 'ID'];
+```
+
+The name `flavors` is whimsical. The inline array is an unnamed magic literal — its meaning is "the valid case variants of the Salesforce ID field name". Additionally, `if (data[flavor])` is a falsy check; while practically safe for Salesforce IDs, `!== undefined` is semantically more precise.
+
+**After**
+
+```js
+const ID_FIELD_VARIANTS = ['Id', 'id', 'ID'];
+
+...
+
+for (const variant of ID_FIELD_VARIANTS) {
+  if (data[variant] !== undefined) {
+    return data[variant];
+  }
+}
+```
+
+**Steps**
+
+1. Declare `const ID_FIELD_VARIANTS = ['Id', 'id', 'ID'];` as a module-level constant near the top of `lib/util.js`.
+2. Rename the loop variable from `flavor` to `variant` (more descriptive).
+3. Change the condition from `if (data[flavor])` to `if (data[variant] !== undefined)`.
+4. Run `npm test`.
+
+---
+
+### R13 — Rename `checkHeaderCaseInsensitive` to `headerContains` (`lib/util.js`)
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/util.js` line 11 |
+| Smell | Uncommunicative Name (Low) |
+| Technique | **Rename Method** |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | None (module-private function) |
+
+**Problem**
+
+`checkHeaderCaseInsensitive(headers, key, searchfor)` is verbose and the parameter `searchfor` is non-standard casing. The function performs a case-insensitive substring search on an HTTP header value — `headerContains` communicates this more precisely. Since the function is module-private (not exported), the rename affects only `lib/util.js` and its callers within the module.
+
+**After**
+
+```js
+const headerContains = (headers, key, substring) => {
+  ...
+};
+```
+
+**Steps**
+
+1. Rename the function and parameter in `lib/util.js`.
+2. Update all callers within `lib/util.js`.
+3. Confirm no external exports need updating (the function is not in `module.exports`).
+
+---
+
+### R14 — Replace `let` with `const` in `lib/optionhelper.js`
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/optionhelper.js` lines 88, 90 |
+| Smell | Inconsistent Style / `let` used for non-reassigned variables (Low) |
+| Technique | **Remove Assignments to Parameters** analogue — use proper binding keyword |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | None |
+
+**Before**
+
+```js
+let result = new URL(opts.uri);   // never reassigned
+let params = opts.qs;             // never reassigned
+```
+
+**After**
+
+```js
+const result = new URL(opts.uri);
+const params = opts.qs;
+```
+
+**Steps**
+
+1. Change `let` to `const` on lines 88 and 90 of `lib/optionhelper.js`.
+2. Verify ESLint passes with no `prefer-const` warnings.
+
+---
+
+### R15 — Rename `getFullUri` to `buildUrl` in `lib/optionhelper.js`
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/optionhelper.js` lines 87–96; `lib/http.js` line 158 |
+| Smell | Uncommunicative Name (Low) |
+| Technique | **Rename Method** |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | Low (internal module API) |
+
+**Problem**
+
+`getFullUri` returns a `URL` object (not a string URI), making the name misleading. The word "URI" implies a string. `buildUrl` accurately describes both the action (construction) and the return type.
+
+**Steps**
+
+1. Rename `getFullUri` to `buildUrl` in `lib/optionhelper.js`.
+2. Update the caller in `lib/http.js`: `const uri = optionHelper.buildUrl(ropts);`.
+3. Update any JSDoc comments referencing the old name.
+
+---
+
+### R16 — Extract `_resubscribeAll` and Propagate Errors in `lib/cometd.js`
+
+| Attribute | Value |
+|-----------|-------|
+| File | `lib/cometd.js` lines 365–370 |
+| Smell | Afraid to Fail (Low) |
+| Technique | **Introduce Assertion** + improve error propagation |
+| Priority | Low |
+| Complexity | Moderate |
+| Risk | Low |
+
+**Problem**
+
+The `_connectLoop` `catch` block silently swallows all errors — no error detail is surfaced to event consumers. The `transport:down` event fires with no information about why the connection dropped.
+
+**Before**
+
+```js
+} catch {
   if (this._disconnecting) return;
   this._connected = false;
-  this.emit('transport:down', err);   // pass error as event payload
+  this.emit('transport:down');
   this._scheduleReconnect();
   return;
 }
 ```
 
-This is non-breaking (existing listeners receive the error object as the first argument, which they currently ignore). Address in the same commit as R18.
-
-### M-10 — Inconsistent Error Handling (`throw` vs `Promise.reject`)
-
-The inconsistency between synchronous `throw` in `insert()` and `Promise.reject()` in `getIdentity()` is intentional in practice (both are safe inside `.then()` chains) but creates a confusing contract. Adding `Introduce Assertion` JSDoc documentation (`@throws` annotations) to clarify the synchronous validators would be sufficient without requiring a behavior change.
-
-### M-16 — `_connectLoop` Divergent Change
-
-`_connectLoop` in `cometd.js` handles six responsibilities (send connect, parse response, detect failure, dispatch data, apply interval, error recovery). Extracting `_dispatchDataMessages(responses)` and `_handleConnectFailure(response)` would improve SRP compliance, but the method is 52 lines and currently readable. Deferring to Phase 4 when the streaming module is next touched.
-
-### M-17 — `apexRest` Missing Guard for `opts.uri`
-
-`apexRest` in `lib/api.js` should guard against missing `opts.uri`:
+**After**
 
 ```js
-if (!opts.uri) {
-  return Promise.reject(new Error('apexRest requires opts.uri'));
+} catch (err) {
+  if (this._disconnecting) return;
+  this._connected = false;
+  this.emit('transport:down', err);   // forward error for diagnostics
+  this._scheduleReconnect();
+  return;
 }
 ```
 
-This aligns with `getIdentity()`'s pattern and eliminates the cryptic `TypeError: Cannot read properties of undefined (reading 'startsWith')`.
+**Steps**
 
-### M-12 — Feature Envy in `multipart.js`
-
-The `contentversion` → `entity`/`name` mapping logic in `lib/multipart.js` belongs in `lib/constants.js`. Minimal fix:
-
-```js
-// lib/constants.js
-const MULTIPART_ENTITY_MAP = { contentversion: 'content' };
-const MULTIPART_BODY_MAP   = { contentversion: 'VersionData' };
-```
+1. Change `catch {` to `catch (err) {` in `_connectLoop`.
+2. Change `this.emit('transport:down')` to `this.emit('transport:down', err)`.
+3. Update the JSDoc for the `transport:down` event to document the optional error argument.
+4. Update `_connectWebSocket` similarly to emit a non-fatal warning event when WebSocket fallback occurs (optional, lower priority).
 
 ---
 
-## SOLID Principle Impact Matrix
+### R17 — Clean Up Dead Code in `test/integration.js`
 
-| Principle | Current Violations | Resolved by | Remaining After Phase 3 |
-|-----------|-------------------|-------------|------------------------|
-| **S — Single Responsibility** | `http.js` (transport + auth state), `cometd.js` (_connectLoop) | R16, (M-16 deferred) | M-16 deferred |
-| **O — Open/Closed** | `http.js` (hardcoded error codes in retry) | R15 (_isTokenError extracted) | None |
-| **L — Liskov Substitution** | None | — | None |
-| **I — Interface Segregation** | `opts` bag, `_getOpts`/`_buildSignal` public exposure | R25 (typedef), R17 (test isolation) | `_getOpts` still on prototype |
-| **D — Dependency Inversion** | `multipart.js` directly creates `FormData`/`Blob` | Not in scope (Web API dependency) | Remains |
+| Attribute | Value |
+|-----------|-------|
+| File | `test/integration.js` lines 7–21 |
+| Smell | Dead Code (Low) |
+| Technique | Remove dead code |
+| Priority | Low |
+| Complexity | Trivial |
+| Risk | None |
+
+**Problem**
+
+1. `let client = undefined;` — explicit `undefined` initialization is redundant.
+2. `checkEnvCredentials()` is called twice — once to gate the `describe` block and again inside `before()`.
+3. `// Mocha.suite.skip();` is a commented-out dead code line.
+
+**After**
+
+```js
+let client;   // implicit undefined
+
+(checkEnvCredentials() ? describe : describe.skip)(
+  'Integration Test against an actual Salesforce instance',
+  () => {
+    before(() => {
+      const creds = checkEnvCredentials();
+      // creds is guaranteed truthy here — describe.skip handled the false case
+      client = nforce.createConnection({ ... });
+    });
+    ...
+  }
+);
+```
+
+**Steps**
+
+1. Change `let client = undefined;` to `let client;`.
+2. Remove the commented-out `// Mocha.suite.skip()` line.
+3. Keep the second `checkEnvCredentials()` call if the `before()` block uses its return value; otherwise remove the redundant call.
+
+---
+
+### R18 — Convert Mock Server to Class-Based Instance (Long-Term)
+
+| Attribute | Value |
+|-----------|-------|
+| File | `test/mock/sfdc-rest-api.js` lines 1–50 |
+| Smell | Global Data / Shared Mutable State (High) |
+| Technique | **Extract Class** |
+| Priority | Medium (Long-term) |
+| Complexity | Moderate |
+| Risk | Medium — touches all test files |
+
+**Problem**
+
+`serverStack` and `requestStack` are module-level mutable arrays. All test files that `require` this mock share the same state. `reset()` only clears `requestStack`, not `serverStack`. If a test file fails to call `reset()`, later tests may observe stale request data.
+
+**After (conceptual)**
+
+```js
+class MockSfdcApi {
+  constructor() {
+    this._serverStack = [];
+    this._requestStack = [];
+  }
+
+  reset() {
+    this._requestStack.length = 0;
+  }
+
+  getLastRequest() {
+    return this._requestStack[0];
+  }
+
+  async getServerInstance(serverListener) { ... }
+  async clearServerStack() { ... }
+}
+
+module.exports = { MockSfdcApi };
+```
+
+Each test file creates its own `MockSfdcApi` instance in `before()` and closes it in `after()`, eliminating all shared state.
+
+**Steps**
+
+1. Wrap the existing module-level state and functions in a `MockSfdcApi` class.
+2. Update all test files (`crud.js`, `query.js`, `auth.js`, etc.) to instantiate `new MockSfdcApi()` in their `before()` blocks.
+3. Update `reset()` to also clear `_serverStack`.
+4. Run the full test suite after each file update.
+
+**Why deferred to long-term**: This change touches every test file. The risk of accidentally breaking tests is moderate. The existing tests pass reliably today, so this is a quality-of-life improvement rather than a bug fix.
 
 ---
 
 ## Risk Assessment Summary
 
-| Recommendation | Risk | Mitigation |
-|---------------|------|------------|
-| R15 — `_retryCount` → closure parameter | Low | Auto-refresh path covered by `test/errors.js` |
-| R16 — Remove `_apiAuthRequest` side-effect | Low | Auth flow tests in `test/crud.js`, `test/connection.js` |
-| R17 — Mock server class encapsulation | Low | Mechanical test file updates; run full `npm test` |
-| R18 — `_resubscribeAll()` extract | Low | Covered by `test/streaming.js` |
-| R19 — `_blobGetter` factory | Low | Covered by blob tests in `test/crud.js` |
-| R20 — `_get()` helper | Low | Wide coverage in `test/query.js`, `test/crud.js` |
-| R21 — `onRefresh` Promise migration | Medium | Breaking change; use shim pattern; document in changelog |
-| R22 — WS frame constants | Low | No logic change — streaming test suite confirms |
-| R23 — `WS_RESPONSE_TIMEOUT_MS` | Low | Constant rename only |
-| R24 — `fdcstream.js` default params | Low | Streaming test suite confirms |
-| R25 — JSDoc typedefs | Low | Documentation only; no runtime change |
-| R26 — Remove section comments | Low | Cosmetic; no test needed |
-| R27 — `getLastRequest` fix | Low | Mock invariant; run full test suite |
-| R28 — Dead code removal | Low | Small scope; run `npm test` |
-| R29 — WS frame helpers | Low | Streaming tests; `this` context binding must be correct |
+| Recommendation | Risk | Rationale |
+|----------------|------|-----------|
+| R01 — Add `require('crypto')` | None | One-line addition with no logic change |
+| R02 — Fix test error swallowing | Low | Test-only change; may reveal real bugs |
+| R03 — Fix `upsert` applyBody | Low | Corrects incorrect behaviour; no API change |
+| R04 — Spacing in api.js | None | Whitespace-only diff |
+| R05 — Extract `_resubscribeAll` | Low | Extracts identical code; no behaviour change |
+| R06 — Remove `Promise.resolve()` wrappers | None | Spec-equivalent simplification |
+| R07 — Fix quote style in cometd.js | Low | ESLint auto-fix; no logic change |
+| R08 — Hoist inline `require` | None | Module loading is identical |
+| R09 — `onRefresh` Promise support | Medium | Additive with backward-compat guard; update docs |
+| R10 — Decompose `getAuthUri` conditionals | Low | Algorithm refactor; existing tests validate |
+| R11 — Inline `rec` temp variable | None | Pure simplification |
+| R12 — Named constant for ID variants | None | Readability only |
+| R13 — Rename `checkHeaderCaseInsensitive` | None | Module-private, no external callers |
+| R14 — `let` → `const` in optionhelper | None | Communicates intent, no logic change |
+| R15 — Rename `getFullUri` → `buildUrl` | Low | Internal API; two-file change |
+| R16 — Propagate errors from `catch` | Low | Adds error argument to existing event |
+| R17 — Clean up dead code in integration.js | None | Removes noise |
+| R18 — Class-based mock server | Medium | Broad test refactor; schedule carefully |
 
 ---
 
-## Recommended Implementation Sequence
+## Sequencing and Dependencies
 
-The following sequence minimizes merge conflicts and builds on each change:
+The recommended implementation order respects these dependencies:
 
-1. **R26** — Remove section divider comments in `api.js` (cosmetic, zero risk, establishes clean baseline).
-2. **R28** — Eliminate dead code and redundant constructs (removes noise before deeper changes).
-3. **R23** — Add `WS_RESPONSE_TIMEOUT_MS` constant (one-line, zero risk).
-4. **R24** — Standardize `fdcstream.js` optional-argument style (isolated to one file).
-5. **R15** — Replace `opts._retryCount` sentinel with closure parameter (high-impact, low-risk).
-6. **R16** — Remove side-effect from `_apiAuthRequest` (depends on reviewing R15's changes to retry path).
-7. **R18** — Extract `_resubscribeAll()` in `cometd.js` (isolated; add error emission as noted in L-11 observation).
-8. **R19** — Extract `_blobGetter` factory (isolated to `api.js`).
-9. **R20** — Extract `_get()` helper (isolated to `api.js`; do after R19 since both touch `api.js`).
-10. **R22** — Name WS frame constants in `cometd-server.js` (prerequisite for R29).
-11. **R29** — Extract WS frame helpers (build on R22).
-12. **R17** — Encapsulate mock server state in class (larger test refactor; do after mock constants settled).
-13. **R27** — Fix `getLastRequest` semantics (subsumed into R17 if done together).
-14. **R25** — Add JSDoc `@typedef` shapes (documentation pass; do near end to incorporate all changes).
-15. **R21** — Replace `onRefresh` callback with Promise hook (breaking change; do last, coordinate with version bump).
+### Phase 1 — Critical Bug Fixes (apply immediately, in order)
+
+1. **R01** (crypto import) — prerequisite for reliable WebSocket test paths
+2. **R03** (upsert applyBody) — fixes silent functional bug before R02 exposes masked failures
+3. **R02** (fix test error swallowing) — apply after R03 so revealed failures are distinguishable
+
+### Phase 2 — Code Quality Improvements (short sprint)
+
+4. **R04** (spacing in api.js) — no-risk ESLint fix
+5. **R07** (quote style in cometd.js) — no-risk ESLint fix
+6. **R14** (`let` → `const` in optionhelper) — no-risk ESLint fix
+7. **R05** (extract `_resubscribeAll`) — Extract Method with clear scope
+8. **R06** (remove `Promise.resolve()` wrappers) — trivial inline
+9. **R11** (inline `rec` in createSObject) — trivial inline
+10. **R08** (hoist inline `require`) — best done after R01 adds the first hoist
+
+### Phase 3 — Design Improvements (medium sprint)
+
+11. **R12** (named constant for ID variants)
+12. **R13** (rename `checkHeaderCaseInsensitive`)
+13. **R15** (rename `getFullUri` → `buildUrl`)
+14. **R10** (decompose `getAuthUri` conditionals)
+15. **R16** (propagate errors from `_connectLoop` catch)
+16. **R17** (clean up integration.js dead code)
+
+### Phase 4 — Architectural Improvements (planned work)
+
+17. **R09** (`onRefresh` Promise support) — coordinate with documentation update
+18. **R18** (class-based mock server) — schedule as a dedicated test-infrastructure task
+
+---
+
+## SOLID Principle Improvements Expected
+
+| Principle | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| SRP | 7/10 | 8/10 | R10 reduces `getAuthUri` complexity; R05 isolates reconnect logic |
+| OCP | 7/10 | 8/10 | R09 opens `onRefresh` to Promise implementations without modification |
+| LSP | 9/10 | 9/10 | No inheritance changes recommended |
+| ISP | 6/10 | 6/10 | R18 (if applied) reduces test surface coupling; prototype mixin remains |
+| DIP | 7/10 | 7/10 | No inversion changes in scope |
+
+---
+
+## Before/After Code Summary
+
+| File | Lines Changed | Type |
+|------|--------------|------|
+| `test/mock/cometd-server.js` | +2 | Import addition |
+| `test/crud.js` | ~12 | Pattern replacement (4 tests) |
+| `test/query.js` | ~27 | Pattern replacement (9 tests) |
+| `lib/api.js` | 1 functional + 7 whitespace | Bug fix + style |
+| `lib/auth.js` | ~15 | Simplification + modernisation |
+| `lib/cometd.js` | ~20 | Style + dedup + error propagation |
+| `lib/util.js` | ~5 | Rename + constant extraction |
+| `lib/optionhelper.js` | 4 | `let`→`const` + rename |
+| `index.js` | 2 | Inline temp removal |
+| `test/integration.js` | 3 | Dead code removal |
+
+---
+
+*Generated by the Refactoring Expert Agent — nforce8 project — 2026-03-30*
