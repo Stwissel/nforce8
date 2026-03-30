@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-nforce8 is a Node.js REST API wrapper for Salesforce, a modernized fork of the original `nforce` library. It is promise-based only (no callback support). Used with NodeRED and other Node.js applications. Requires Node.js >22.0.
+nforce8 is a Node.js REST API wrapper for Salesforce, a modernized fork of the original `nforce` library. It is promise-based only (no callback support). Used with NodeRED and other Node.js applications. Requires Node.js >=22.4.0 (stable built-in `WebSocket`; experimental in 22.0–22.3).
 
 ## Commands
 
@@ -24,7 +24,7 @@ There is no build step — this is a plain Node.js module with no transpilation.
 
 ### Supporting Modules
 
-- **`lib/fdcstream.js`** — Faye-based Streaming API client (EventEmitter). `Subscription` and `Client` classes with replay and auto-reconnection support.
+- **`lib/fdcstream.js`** — CometD-based Streaming API client (EventEmitter). `Subscription` and `Client` classes with replay and auto-reconnection support.
 - **`lib/optionhelper.js`** — Builds API request options (URIs, headers, multipart, gzip).
 - **`lib/multipart.js`** — Multipart form-data builder for file uploads (ContentVersion, Attachment).
 - **`lib/util.js`** — Type checking, response validation, OAuth validation, ID extraction.

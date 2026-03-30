@@ -1,0 +1,56 @@
+{
+  "total_recommendations": 18,
+  "priority_matrix": [
+    {"item": "R01 — Add missing require('crypto') to test/mock/cometd-server.js", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R02 — Fix silent error swallowing in test promise chains (13 occurrences in crud.js and query.js)", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R03 — Fix upsert() to use applyBody helper instead of direct JSON.stringify", "impact": "H", "complexity": "L", "risk": "L"},
+    {"item": "R04 — Fix missing space after = operator in lib/api.js (7 occurrences)", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R05 — Extract _resubscribeAll() method in lib/cometd.js to eliminate duplicated loop", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R06 — Remove redundant Promise.resolve() wrappers in lib/auth.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R07 — Fix double-quote style in lib/cometd.js to match single-quote ESLint rule", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R08 — Hoist inline require('events') to top-level import in test/mock/cometd-server.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R09 — Modernise onRefresh in lib/auth.js to accept Promise-returning functions", "impact": "M", "complexity": "M", "risk": "M"},
+    {"item": "R10 — Decompose getAuthUri 8-block conditional in lib/auth.js using declarative mapping", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R11 — Inline redundant rec intermediate variable in createSObject (index.js)", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R12 — Replace inline ['Id','id','ID'] magic array with named constant ID_FIELD_VARIANTS in lib/util.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R13 — Rename checkHeaderCaseInsensitive to headerContains in lib/util.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R14 — Replace let with const for non-reassigned variables in lib/optionhelper.js", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R15 — Rename getFullUri to buildUrl in lib/optionhelper.js to match URL object return type", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R16 — Propagate caught errors to transport:down event in lib/cometd.js _connectLoop", "impact": "M", "complexity": "L", "risk": "L"},
+    {"item": "R17 — Remove dead code in test/integration.js (undefined init, redundant call, commented code)", "impact": "L", "complexity": "L", "risk": "L"},
+    {"item": "R18 — Convert test/mock/sfdc-rest-api.js global mutable state to class-based instance", "impact": "M", "complexity": "M", "risk": "M"}
+  ],
+  "risk_distribution": {
+    "low": 16,
+    "medium": 2,
+    "high": 0
+  },
+  "category_distribution": {
+    "Composing Methods": 7,
+    "Simplifying Method Calls": 3,
+    "Organizing Data": 1,
+    "Moving Features": 1,
+    "Simplifying Conditionals": 1,
+    "Style and Mechanical": 5
+  },
+  "implementation_sequence": [
+    {"order": 1, "item": "R01 — Add missing require('crypto') to test/mock/cometd-server.js", "rationale": "Latent crash on WebSocket upgrade path; one-line fix with zero risk that unblocks reliable test execution"},
+    {"order": 2, "item": "R03 — Fix upsert() to use applyBody helper instead of direct JSON.stringify", "rationale": "Correct functional bug before fixing test error masking, so any newly surfaced test failures are distinguishable as pre-existing production bugs"},
+    {"order": 3, "item": "R02 — Fix silent error swallowing in test promise chains (13 occurrences)", "rationale": "Apply after R03 so failures revealed by this fix map to real production bugs rather than test infrastructure issues"},
+    {"order": 4, "item": "R04 — Fix missing space after = operator in lib/api.js (7 occurrences)", "rationale": "Zero-risk ESLint auto-fix; bundle with other ESLint passes in same session"},
+    {"order": 5, "item": "R07 — Fix double-quote style in lib/cometd.js to match single-quote ESLint rule", "rationale": "Zero-risk ESLint auto-fix; bundle with R04 pass"},
+    {"order": 6, "item": "R14 — Replace let with const for non-reassigned variables in lib/optionhelper.js", "rationale": "Zero-risk ESLint auto-fix; bundle with R04 and R07 pass to complete all ESLint fixable items in one go"},
+    {"order": 7, "item": "R05 — Extract _resubscribeAll() method in lib/cometd.js", "rationale": "Extract Method with clear scope and existing tests; eliminates duplication before any further cometd.js changes"},
+    {"order": 8, "item": "R08 — Hoist inline require('events') to top-level import in test/mock/cometd-server.js", "rationale": "Best applied alongside R01 which already touches the same file's import section"},
+    {"order": 9, "item": "R06 — Remove redundant Promise.resolve() wrappers in lib/auth.js", "rationale": "Trivial inline; apply before R09 and R10 which also touch auth.js to keep that file's diff coherent"},
+    {"order": 10, "item": "R11 — Inline redundant rec intermediate variable in createSObject (index.js)", "rationale": "Trivial one-line cleanup with no dependencies; low cognitive load"},
+    {"order": 11, "item": "R12 — Replace inline ['Id','id','ID'] magic array with named constant in lib/util.js", "rationale": "Bundle util.js changes together; apply before R13 which also touches util.js"},
+    {"order": 12, "item": "R13 — Rename checkHeaderCaseInsensitive to headerContains in lib/util.js", "rationale": "Apply after R12 to complete all util.js changes in one file session"},
+    {"order": 13, "item": "R15 — Rename getFullUri to buildUrl in lib/optionhelper.js", "rationale": "Two-file rename (optionhelper + http); apply in its own focused change to keep diff reviewable"},
+    {"order": 14, "item": "R10 — Decompose getAuthUri 8-block conditional in lib/auth.js", "rationale": "Algorithm refactor with existing test coverage; apply after R06 cleans up the same file"},
+    {"order": 15, "item": "R16 — Propagate caught errors to transport:down event in lib/cometd.js _connectLoop", "rationale": "Apply after cometd.js style fixes (R05, R07) are in; adds error argument to existing event emission"},
+    {"order": 16, "item": "R17 — Remove dead code in test/integration.js", "rationale": "Low-priority cleanup; apply in final housekeeping pass to avoid conflating with functional changes"},
+    {"order": 17, "item": "R09 — Modernise onRefresh in lib/auth.js to accept Promise-returning functions", "rationale": "Additive API change requiring documentation update; schedule with next version planning to coordinate release notes"},
+    {"order": 18, "item": "R18 — Convert test/mock/sfdc-rest-api.js global mutable state to class-based instance", "rationale": "Broad test infrastructure change touching every test file; schedule as dedicated sprint to allow focused review and rollback if needed"}
+  ]
+}

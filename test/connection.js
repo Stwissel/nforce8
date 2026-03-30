@@ -310,6 +310,49 @@ describe('index', function () {
         (err) => { err.message.should.equal('refresh failed'); }
       );
     });
+
+    it('should accept a promise-returning onRefresh function', function () {
+      let refreshCalled = false;
+      let org = makeOrg({
+        onRefresh: async function (newOauth, oldOauth) {
+          refreshCalled = true;
+          newOauth.access_token.should.equal('new_token');
+          oldOauth.access_token.should.equal('old_token');
+        }
+      });
+      let newOauth = { access_token: 'new_token' };
+      let oldOauth = { access_token: 'old_token' };
+      return org._notifyAndResolve(newOauth, oldOauth).then((result) => {
+        refreshCalled.should.be.true();
+        result.access_token.should.equal('new_token');
+      });
+    });
+
+    it('should reject when async onRefresh throws', function () {
+      let org = makeOrg({
+        onRefresh: async function () {
+          throw new Error('async refresh failed');
+        }
+      });
+      return org._notifyAndResolve({ access_token: 'test' }, {}).then(
+        () => { throw new Error('should have rejected'); },
+        (err) => { err.message.should.equal('async refresh failed'); }
+      );
+    });
+
+    it('should accept a sync non-callback onRefresh function', function () {
+      let refreshCalled = false;
+      let org = makeOrg({
+        onRefresh: function (newOauth) {
+          refreshCalled = true;
+          newOauth.access_token.should.equal('new_token');
+        }
+      });
+      return org._notifyAndResolve({ access_token: 'new_token' }, {}).then((result) => {
+        refreshCalled.should.be.true();
+        result.access_token.should.equal('new_token');
+      });
+    });
   });
 
   describe('#single-mode OAuth guard', function () {

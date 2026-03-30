@@ -1,46 +1,36 @@
 # nforce8 :: node.js salesforce REST API wrapper
 
-This libary is based on a fork of Kevin O'Hara's brilliant
-[nforce](https://github.com/kevinohara80/nforce) library. You might want to refer to the original!
-
-## Code and build
+A promise-based Node.js REST API wrapper for Salesforce, a modernized fork of Kevin O'Hara's [nforce](https://github.com/kevinohara80/nforce) library.
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/719bc9f8685247fc8fdac704e596ee67)](https://www.codacy.com/app/Stwissel/nforce8?utm_source=github.com&utm_medium=referral&utm_content=Stwissel/nforce8&utm_campaign=Badge_Grade)
 [![Codacy Badge](https://api.codacy.com/project/badge/Coverage/719bc9f8685247fc8fdac704e596ee67)](https://www.codacy.com/app/Stwissel/nforce8?utm_source=github.com&utm_medium=referral&utm_content=Stwissel/nforce8&utm_campaign=Badge_Coverage)
 [![npm version](https://badge.fury.io/js/nforce8.svg)](https://badge.fury.io/js/nforce8)
 [![Known Vulnerabilities](https://snyk.io/test/github/Stwissel/nforce8/badge.svg?targetFile=package.json)](https://snyk.io/test/github/Stwissel/nforce8?targetFile=package.json)
-[![Snyk package health](https://snyk.io/advisor/npm-package/nforce8/badge.svg)](https://snyk.io/advisor/npm-package/nforce8)
+[![Snyk security (npm package)](https://snyk.io/test/npm/nforce8/badge.svg)](https://security.snyk.io/package/npm/nforce8)
 [![Coverage Status](https://coveralls.io/repos/github/Stwissel/nforce8/badge.svg?branch=master)](https://coveralls.io/github/Stwissel/nforce8?branch=master)
+[![CI](https://github.com/Stwissel/nforce8/actions/workflows/codecheck.yml/badge.svg)](https://github.com/Stwissel/nforce8/actions/workflows/codecheck.yml)
 
-## Rationale
+## Requirements
 
-I'm maintaining the [NodeRED](https://nodered.org/) modules for Salesforce: [node-red-contrib-salesforce](https://www.npmjs.com/package/node-red-contrib-salesforce). The nodes needed a more recent library version and a few patches to get it to work, so I was too much tempted and forked the library.
-
-## Original Documentation
-
-Read it [here](https://www.npmjs.com/package/nforce)
-
-## Updated documentation
-
-Evolving documentation on [github.io](https://stwissel.github.io/nforce8)
-
-## Important differences
-
-- Version numbers, if provided, **must** be full qualified strings like `v42.0`, short numbers or string are no longer accepted. These will fail ~42 42.0 '42'~
-- nforce8 only works with promises, no callback support
-- Subscriptions to events need the full path, option of type gets ignored
-
-## Change Log
-
-Overview documentation on [changes between versions](https://stwissel.github.io/nforce8/Changelog.html)
+- **Node.js >= 22.4.0** — uses built-in `fetch` and a stable built-in `WebSocket` (Node’s global `WebSocket` was experimental in 22.0–22.3)
 
 ## Features
 
-- Promised based API
-- Intelligent sObjects (inherited from [nforce](https://www.npmjs.com/package/nforce))
-- Streaming support using [Faye](https://www.npmjs.com/package/faye) for any Salesforce topic including Change Data Capture
-- Authentication helper methods (OAuth)
-- Multi-user design with single user mode (inherited from [nforce](https://www.npmjs.com/package/nforce))
+- Promise-based API (no callback support)
+- Intelligent sObjects with field change tracking
+- CRUD operations (insert, update, upsert, delete, getRecord)
+- SOQL queries with automatic pagination (`fetchAll`)
+- SOSL search
+- Streaming API support (PushTopics, Platform Events, Change Data Capture)
+  - Built-in CometD/Bayeux client with long-polling and WebSocket transports
+  - Replay ID support for event replay
+  - No external streaming dependencies
+- Binary content retrieval (Attachments, Documents, ContentVersions)
+- Apex REST endpoint support
+- OAuth authentication (authorization code, username/password, SAML assertion)
+- Automatic token refresh on session expiration
+- Single-user and multi-user modes
+- Plugin system for extending the Connection prototype
 
 ## Installation
 
@@ -48,104 +38,146 @@ Overview documentation on [changes between versions](https://stwissel.github.io/
 npm install nforce8
 ```
 
-## Usage
+## Quick Start
 
-### Create a client connection
+### Create a Connection
 
 ```js
 const nforce = require('nforce8');
 
-const org = nforce8.createConnection({
-  clientId: 'CLIENT_ID_OAUTH',
-  clientSecret: 'CLIENT_SECRET_OAUTH',
-  redirectUri: 'https://yourapp.herokuapp.com/oauth/_callback', // could be http://localhost:3000/ instead
-  apiVersion: 'v45.0',  // optional, defaults to current salesforce API version
-  environment: 'production',  // optional, salesforce 'sandbox' or 'production', production default
-  mode: 'multi' // optional, 'single' or 'multi' user mode, multi default
+const org = nforce.createConnection({
+  clientId: 'YOUR_CLIENT_ID',
+  clientSecret: 'YOUR_CLIENT_SECRET',
+  redirectUri: 'http://localhost:3000/oauth/_callback',
+  apiVersion: 'v62.0',  // optional, defaults to current API version
+  environment: 'production',  // optional, 'production' or 'sandbox'
+  mode: 'multi' // optional, 'single' or 'multi' user mode
 });
 ```
 
-### Authenticate using OAuth
+### Authenticate
 
 ```js
-// Multi-User
-let oauth;
-const creds = {username: 'john.doe@noreply.com', password: 'secretjohn'};
-org.authenticate(creds)
-   .then(result => oauth = result;)
-   .catch(/* handle failure here */);
+// Multi-user mode
+const oauth = await org.authenticate({
+  username: 'user@example.com',
+  password: 'password'
+});
 
-// Single user mode
-const creds = {username: 'john.doe@noreply.com', password: 'secretjohn'};
-org.authenticate(creds)
-   .then(result => console.log(org.oauth.access_token);)
-   .catch(/* handle failure here */);
+// Single-user mode — OAuth is cached on the connection
+await org.authenticate({
+  username: 'user@example.com',
+  password: 'password'
+});
+```
 
-
-### Use the object factory to create records
-
-Sample based on original nforce. In single user mode the oauth argument can be omitted since it is cached in the connection object
+### CRUD Operations
 
 ```js
-
+// Insert
 const acc = nforce.createSObject('Account');
 acc.set('Name', 'ACME Corporation');
 acc.set('Phone', '800-555-2345');
-acc.set('SLA__c', 'Platinum');
 
-const payload = { sobject: acc, oauth: oauth };
+const result = await org.insert({ sobject: acc, oauth });
+console.log('Created:', result.id);
 
-org.insert(payload)
-.then(result => console.log(JSON.stringify(result)))
-.catch(err => console.log(err));
+// Query
+const resp = await org.query({
+  query: 'SELECT Id, Name FROM Account WHERE Name = \'ACME Corporation\' LIMIT 1',
+  oauth
+});
 
+// Update (only changed fields are sent)
+const record = resp.records[0];
+record.set('Name', 'ACME Coyote');
+record.set('Industry', 'Explosives');
+await org.update({ sobject: record, oauth });
+
+// Delete
+await org.delete({ sobject: record, oauth });
 ```
 
-### Query and update
+### Streaming API
 
-Querying and updating records is super easy. **nforce** wraps API-queried records in a special object. The object caches field updates that you make to the record and allows you to pass the record directly into the update method without having to scrub out the unchanged fields. In the example below, only the Name and Industry fields will be sent in the update call despite the fact that the query returned other fields such as BillingCity and CreatedDate.
+Subscribe to PushTopics, Platform Events, or Change Data Capture events:
 
 ```js
+const oauth = await org.authenticate(creds);
+const client = org.createStreamClient();
+const sub = client.subscribe({ topic: '/data/ChangeEvents' });
 
-const q = { query :'SELECT Id, Name, CreatedDate, BillingCity FROM Account WHERE Name = "ACME Corporation" LIMIT 1'};
-
-org.query(q)
-   .then(resp => {
-       if (resp.records) {
-           const acc = resp.records[0];
-           acc.set('Name','ACME Coyote');
-           acc.set('Industry','Explosives');
-           const payload = {sobject: acc, oauth: oauth};
-           org.update(payload)
-            .then(result => console.log('It worked'));
-       }
-   })
-   .catch(err => console.log(err));
-
+sub.on('data', (event) => console.log(event));
+sub.on('connect', () => console.log('Subscribed'));
+sub.on('error', (err) => {
+  console.error(err);
+  client.disconnect();
+});
 ```
 
-### Streaming API Support
-
-You need to specify the full topic starting with a slash
+**Replay support** — resume from a specific event replay ID:
 
 ```js
-
-const creds = {username: 'john.doe@noreply.com', password: 'secretjohn'};
-
-org.authenticate(creds)
-    .then(oauth => {
-        const client = org.createStreamClient();
-        const topic = {topic: '/data/ChangeEvents'};
-        const cdc = client.subscribe(topic);
-        cdc.on('error' err => {
-            console.log('subscription error');
-            console.log(err);
-            client.disconnect();
-        });
-        cdc.on('data', data => console.log(data));
-    })
-    .catch(err => console.log(err));
-
+const sub = client.subscribe({
+  topic: '/event/MyPlatformEvent__e',
+  replayId: -2  // -1 = new only, -2 = all available
+});
 ```
 
-Read the [nforce documentation](https://www.npmjs.com/package/nforce) for more details
+### Apex REST
+
+```js
+const result = await org.apexRest({
+  uri: 'MyCustomEndpoint',
+  method: 'POST',
+  body: { key: 'value' },
+  oauth
+});
+```
+
+### Binary Content
+
+```js
+// Retrieve attachment, document, or content version binary data
+const buffer = await org.getBinaryContent({
+  sobject: attachmentRecord,
+  oauth
+});
+```
+
+## API Version Format
+
+API versions **must** be fully-qualified strings like `'v62.0'`. Bare numbers (`42`, `42.0`) and short strings (`'v42'`) are rejected.
+
+## Single vs Multi User Mode
+
+- **Multi-User Mode** (default): pass `oauth` with each API call
+- **Single-User Mode**: OAuth is cached on the connection after `authenticate()`, no need to pass it
+
+## Important Differences from nforce
+
+- Promise-only API, no callback support
+- API version must be fully-qualified (`'v45.0'`, not `42` or `'42'`)
+- Streaming subscriptions require the full topic path (e.g. `/topic/MyTopic`)
+- Requires Node.js >= 22.4.0 (stable built-in `WebSocket`; experimental in 22.0–22.3)
+- Built-in CometD client replaces the faye dependency
+
+## Documentation
+
+- [Changelog](https://stwissel.github.io/nforce8/Changelog.html)
+- [Streaming API guide](docs/streamingApi.md)
+- [Original nforce documentation](https://www.npmjs.com/package/nforce) (for inherited API details)
+
+## Development
+
+```bash
+# Run tests
+npm test
+
+# Lint
+npm run lint
+```
+
+## License
+
+See [LICENSE](LICENSE) file.

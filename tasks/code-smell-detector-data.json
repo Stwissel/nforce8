@@ -1,0 +1,89 @@
+{
+  "grade": "B",
+  "total_issues": 30,
+  "severity_distribution": {
+    "high": 3,
+    "medium": 11,
+    "low": 16
+  },
+  "category_distribution": {
+    "Lexical Abusers": 7,
+    "Data Dealers": 5,
+    "Dispensables": 5,
+    "Obfuscators": 3,
+    "Functional Abusers": 3,
+    "Object-Oriented Abusers": 2,
+    "Change Preventers": 2,
+    "Couplers": 2,
+    "Other": 1
+  },
+  "solid_compliance": {
+    "SRP": 7,
+    "OCP": 7,
+    "LSP": 9,
+    "ISP": 6,
+    "DIP": 7
+  },
+  "top_issues": [
+    {
+      "file": "test/mock/cometd-server.js",
+      "issue": "Missing require('crypto') import — crypto.createHash() used as implicit global, causing ReferenceError at runtime on WebSocket upgrade path",
+      "severity": "high",
+      "category": "Functional Abusers"
+    },
+    {
+      "file": "test/crud.js",
+      "issue": "Flawed error-catch test pattern: .catch((err) => should.not.exist(err)).finally(done) silently swallows assertion failures in 6 tests",
+      "severity": "high",
+      "category": "Other"
+    },
+    {
+      "file": "test/query.js",
+      "issue": "Flawed error-catch test pattern: .catch((err) => should.not.exist(err)).finally(done) silently swallows assertion failures in 9 tests",
+      "severity": "high",
+      "category": "Other"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "upsert() bypasses applyBody helper and directly serializes JSON body, silently producing incorrect requests when upserting binary SObjects (Document, ContentVersion)",
+      "severity": "medium",
+      "category": "Other"
+    },
+    {
+      "file": "test/mock/sfdc-rest-api.js",
+      "issue": "Module-level mutable arrays (serverStack, requestStack) shared across all test imports — cross-test state contamination risk",
+      "severity": "high",
+      "category": "Data Dealers"
+    },
+    {
+      "file": "index.js",
+      "issue": "Prototype mixin via Object.assign(Connection.prototype, httpMethods, authMethods, apiMethods) creates 35+ method flat surface and Divergent Change risk",
+      "severity": "medium",
+      "category": "Object-Oriented Abusers"
+    },
+    {
+      "file": "lib/api.js",
+      "issue": "Seven assignment statements missing space after = operator (lines 226, 240, 241, 255, 257, 271, 272) — inconsistent style across file",
+      "severity": "medium",
+      "category": "Lexical Abusers"
+    },
+    {
+      "file": "lib/auth.js",
+      "issue": "_notifyAndResolve uses callback-based onRefresh API inside Promise constructor while all other library APIs are Promise-only",
+      "severity": "medium",
+      "category": "Change Preventers"
+    },
+    {
+      "file": "lib/cometd.js",
+      "issue": "Entire file uses double-quoted strings while rest of codebase enforces single quotes — violates ESLint quotes rule",
+      "severity": "medium",
+      "category": "Lexical Abusers"
+    },
+    {
+      "file": "lib/cometd.js",
+      "issue": "Duplicated re-subscription loop in both _rehandshake() and _scheduleReconnect() — should be extracted to _resubscribeAll()",
+      "severity": "low",
+      "category": "Dispensables"
+    }
+  ]
+}

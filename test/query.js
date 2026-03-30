@@ -2,8 +2,9 @@
 
 const nforce = require('../index');
 const should = require('should');
-const api = require('./mock/sfdc-rest-api');
-const port = process.env.PORT || 33333;
+const { MockSfdcApi } = require('./mock/sfdc-rest-api');
+const port = 33334;
+const api = new MockSfdcApi(port);
 
 const CONST = require('../lib/constants');
 const apiVersion = CONST.API;
@@ -28,12 +29,13 @@ function verifyAccessToken() {
 describe('query', () => {
   // set up mock server
   before((done) => api.start(port, done));
+  beforeEach(() => api.reset());
 
   describe('#query', function () {
     let expected = `/services/data/${apiVersion}/query?q=SELECT+Id+FROM+Account+LIMIT+1`;
 
-    it('should work in multi-user mode with promises', (done) => {
-      orgMulti
+    it('should work in multi-user mode with promises', () => {
+      return orgMulti
         .query({ query: testQuery, oauth: oauth })
         .then((res) => {
           should.exist(res);
@@ -44,32 +46,26 @@ describe('query', () => {
               'authorization',
               'Bearer ' + oauth.access_token
             );
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
 
-    it('should work in single-user mode with promises', (done) => {
-      orgSingle
+    it('should work in single-user mode with promises', () => {
+      return orgSingle
         .query({ query: testQuery })
         .then((res) => {
           should.exist(res);
           const lr = api.getLastRequest();
           lr.url.should.equal(expected);
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
 
-    it('should allow a string query in single-user mode', (done) => {
-      orgSingle
+    it('should allow a string query in single-user mode', () => {
+      return orgSingle
         .query(testQuery)
         .then((res) => {
           should.exist(res);
           api.getLastRequest().url.should.equal(expected);
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
   });
 
@@ -79,45 +75,39 @@ describe('query', () => {
       apiVersion +
       '/queryAll?q=SELECT+Id+FROM+Account+LIMIT+1';
 
-    it('should work in multi-user mode with promises', (done) => {
-      orgMulti
+    it('should work in multi-user mode with promises', () => {
+      return orgMulti
         .queryAll({ query: testQuery, oauth: oauth })
         .then((res) => {
           should.exist(res);
           api.getLastRequest().url.should.equal(expected);
           verifyAccessToken();
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
 
-    it('should work in single-user mode with promises', (done) => {
-      orgSingle
+    it('should work in single-user mode with promises', () => {
+      return orgSingle
         .queryAll({ query: testQuery })
         .then((res) => {
           should.exist(res);
           api.getLastRequest().url.should.equal(expected);
           verifyAccessToken();
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
 
-    it('should allow a string query in single-user mode', (done) => {
-      orgSingle
+    it('should allow a string query in single-user mode', () => {
+      return orgSingle
         .queryAll(testQuery)
         .then((res) => {
           should.exist(res);
           api.getLastRequest().url.should.equal(expected);
           verifyAccessToken();
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
   });
 
   describe('#search', function () {
-    it('should return Record instances in searchRecords when raw is false', (done) => {
+    it('should return Record instances in searchRecords when raw is false', () => {
       let searchResponse = {
         code: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -129,7 +119,7 @@ describe('query', () => {
           totalSize: 2
         })
       };
-      api
+      return api
         .getGoodServerInstance(searchResponse)
         .then(() =>
           orgMulti.search({ search: 'FIND {Acme}', oauth: oauth })
@@ -141,12 +131,10 @@ describe('query', () => {
           res.searchRecords[0].hasChanged().should.equal(false);
           res.searchRecords[0].get('name').should.equal('Acme');
           res.totalSize.should.equal(2);
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
 
-    it('should return raw results when raw is true', (done) => {
+    it('should return raw results when raw is true', () => {
       let searchResponse = {
         code: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -157,7 +145,7 @@ describe('query', () => {
           totalSize: 1
         })
       };
-      api
+      return api
         .getGoodServerInstance(searchResponse)
         .then(() =>
           orgMulti.search({ search: 'FIND {Acme}', oauth: oauth, raw: true })
@@ -167,12 +155,10 @@ describe('query', () => {
           res.searchRecords.length.should.equal(1);
           res.searchRecords[0].should.not.be.instanceOf(nforce.Record);
           res.searchRecords[0].Name.should.equal('Acme');
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
 
-    it('should return response as-is when searchRecords is empty', (done) => {
+    it('should return response as-is when searchRecords is empty', () => {
       let searchResponse = {
         code: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -181,7 +167,7 @@ describe('query', () => {
           totalSize: 0
         })
       };
-      api
+      return api
         .getGoodServerInstance(searchResponse)
         .then(() =>
           orgMulti.search({ search: 'FIND {nothing}', oauth: oauth })
@@ -190,9 +176,7 @@ describe('query', () => {
           should.exist(res);
           res.searchRecords.length.should.equal(0);
           res.totalSize.should.equal(0);
-        })
-        .catch((err) => should.not.exist(err))
-        .finally(() => done());
+        });
     });
   });
 
