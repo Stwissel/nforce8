@@ -1,5 +1,6 @@
 'use strict';
 
+const EventEmitter = require('events');
 const http = require('http');
 
 const DEFAULT_PORT = 34444;
@@ -274,7 +275,7 @@ class MockCometDServer {
    * @returns {EventEmitter}
    */
   _createWsWrapper(socket) {
-    const emitter = new (require('events').EventEmitter)();
+    const emitter = new EventEmitter();
     let buffer = Buffer.alloc(0);
 
     socket.on('data', (chunk) => {
