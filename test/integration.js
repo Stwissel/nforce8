@@ -3,20 +3,14 @@
 const nforce = require('../');
 const should = require('should');
 
-// The SFDC Client instance
-let client = undefined;
+let client;
 
 (checkEnvCredentials() ? describe : describe.skip)(
   'Integration Test against an actual Salesforce instance',
   () => {
     before(() => {
-      let creds = checkEnvCredentials();
-      if (creds == null) {
-        // Can't run integration tests
-        // Mocha.suite.skip();
-      } else {
-        client = nforce.createConnection(creds);
-      }
+      const creds = checkEnvCredentials();
+      client = nforce.createConnection(creds);
     });
 
     after(() => {
