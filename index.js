@@ -82,8 +82,7 @@ const createSObject = (type, fields) => {
   data.attributes = {
     type: type,
   };
-  const rec = new Record(data);
-  return rec;
+  return new Record(data);
 };
 
 const version = require('./package.json').version;
