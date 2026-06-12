@@ -22,7 +22,7 @@ jobs:
         with:
           coverage-reports: "coverage/lcov.info"
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-      - uses: codecov/codecov-action@v6
+      - uses: codecov/codecov-action@v7
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
